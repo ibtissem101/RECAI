@@ -15,18 +15,20 @@ import {
   Bell,
   Menu,
   Plus,
-  LineChart,
+  Briefcase,
   LogOut,
 } from "lucide-react";
 import Dashboard from "./components/Dashboard";
 import CandidateDetail from "./components/CandidateDetail";
 import CandidateList from "./components/CandidateList";
-import MarketIntel from "./components/MarketIntel";
 import SettingsPage from "./components/SettingsPage";
 import ProfilePage from "./components/ProfilePage";
 import ProcessingModal from "./components/ProcessingModal";
 import UploadModal from "./components/UploadModal";
-import { Candidate, DashboardStats } from "./types";
+import HRReviewDashboard from "./components/HRReviewDashboard";
+import JobPostingPage from "./components/JobPostingPage";
+import { Candidate, DashboardStats, RankedCandidatesResult } from "./types";
+import { processAndRankResumes } from "./services/geminiService";
 
 // Mock Data
 const mockStats: DashboardStats = {
@@ -83,20 +85,57 @@ const AppContent: React.FC = () => {
   const [selectedCandidate, setSelectedCandidate] =
     useState<Candidate>(defaultCandidate);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [rankedCandidates, setRankedCandidates] =
+    useState<RankedCandidatesResult | null>(null);
+  const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
 
   const startUploadFlow = () => {
     setShowUploadModal(true);
   };
 
-  const handleUploadComplete = (files: File[]) => {
+  const handleUploadComplete = async (files: File[]) => {
     setShowUploadModal(false);
     setIsProcessing(true);
+
+    try {
+      // Process and rank resumes using Gemini AI
+      const result = await processAndRankResumes(files);
+
+      // Convert to RankedCandidatesResult type (includes declined files)
+      const rankedResult: RankedCandidatesResult = {
+        confirmed: result.confirmed as Candidate[],
+        waitlist: result.waitlist as Candidate[],
+        rejected: result.rejected as Candidate[],
+        allRanked: result.allRanked as Candidate[],
+        declined: result.declined, // Include files that were not resumes
+      };
+
+      setRankedCandidates(rankedResult);
+      setAllCandidates(rankedResult.allRanked);
+    } catch (error) {
+      console.error("Processing failed:", error);
+      // Set empty result on error
+      setRankedCandidates({
+        confirmed: [],
+        waitlist: [],
+        rejected: [],
+        allRanked: [],
+      });
+    }
   };
 
-  const handleProcessingComplete = () => {
+  const handleProcessingComplete = (result?: RankedCandidatesResult) => {
     setIsProcessing(false);
-    setSelectedCandidate(defaultCandidate);
-    navigate("/candidates/1");
+
+    if (result && result.allRanked.length > 0) {
+      setSelectedCandidate(result.allRanked[0] as Candidate);
+      // Navigate to candidates list to show all ranked candidates
+      navigate("/candidates");
+    } else {
+      setSelectedCandidate(defaultCandidate);
+      navigate("/candidates/1");
+    }
+
     setShowNotification(true);
     setTimeout(() => setShowNotification(false), 5000);
   };
@@ -106,11 +145,37 @@ const AppContent: React.FC = () => {
     navigate(`/candidates/${candidate.id}`);
   };
 
+  const handleUpdateCandidate = (updated: Candidate) => {
+    setSelectedCandidate(updated);
+    // Update in allCandidates array
+    setAllCandidates((prev) =>
+      prev.map((c) => (c.id === updated.id ? updated : c))
+    );
+    // Update in rankedCandidates if exists
+    if (rankedCandidates) {
+      setRankedCandidates({
+        ...rankedCandidates,
+        confirmed: rankedCandidates.confirmed.map((c) =>
+          c.id === updated.id ? updated : c
+        ),
+        waitlist: rankedCandidates.waitlist.map((c) =>
+          c.id === updated.id ? updated : c
+        ),
+        rejected: rankedCandidates.rejected.map((c) =>
+          c.id === updated.id ? updated : c
+        ),
+        allRanked: rankedCandidates.allRanked.map((c) =>
+          c.id === updated.id ? updated : c
+        ),
+      });
+    }
+  };
+
   const handleNavigate = (view: string) => {
     const routeMap: Record<string, string> = {
       dashboard: "/",
       candidates: "/candidates",
-      market_intel: "/market-intel",
+
       settings: "/settings",
       profile: "/profile",
     };
@@ -123,16 +188,19 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-[#D7E9F4] font-sans text-slate-800">
+    <div className="flex h-screen bg-[#eef2ff] font-sans text-slate-800">
       {/* Sidebar - Desktop */}
       <aside className="w-64 bg-white border-r border-[#BDDEF3] hidden md:flex flex-col shadow-sm z-20">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold tracking-tight text-[#1BB0A3]">
-            RecAi
-          </h1>
-          <p className="text-slate-400 text-sm font-medium">
-            TalentFlow Engine
-          </p>
+        <div className="p-6 flex items-center gap-3">
+          <img src="/assets/logo.webp" alt="RECAI" className="h-5 " />
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-black">
+              RECAI
+            </h1>
+            <p className="text-slate-400 text-sm font-medium">
+              TalentFlow Engine
+            </p>
+          </div>
         </div>
 
         <nav className="flex-1 px-4 space-y-2 mt-4">
@@ -149,10 +217,10 @@ const AppContent: React.FC = () => {
             to="/candidates"
           />
           <NavItem
-            icon={<LineChart size={20} />}
-            label="Market Intel"
-            active={isActive("/market-intel")}
-            to="/market-intel"
+            icon={<Briefcase size={20} />}
+            label="Job Postings"
+            active={isActive("/job-postings")}
+            to="/job-postings"
           />
           <NavItem
             icon={<Settings size={20} />}
@@ -162,7 +230,7 @@ const AppContent: React.FC = () => {
           />
         </nav>
 
-        <div className="p-4 border-t border-[#D7E9F4]">
+        <div className="p-4 border-t border-[#eef2ff]">
           <button className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors">
             <LogOut size={20} />
             Log Out
@@ -184,8 +252,9 @@ const AppContent: React.FC = () => {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="p-6">
-          <h1 className="text-2xl font-bold tracking-tight text-[#1BB0A3]">
+        <div className="p-6 flex items-center gap-3">
+          <img src="/assets/logo.webp" alt="RECAI" className="w-8 h-8" />
+          <h1 className="text-2xl font-bold tracking-tight text-[#3f5ecc]">
             RecAi
           </h1>
         </div>
@@ -205,10 +274,10 @@ const AppContent: React.FC = () => {
             onClick={() => setSidebarOpen(false)}
           />
           <NavItem
-            icon={<LineChart size={20} />}
-            label="Market Intel"
-            active={isActive("/market-intel")}
-            to="/market-intel"
+            icon={<Briefcase size={20} />}
+            label="Job Postings"
+            active={isActive("/job-postings")}
+            to="/job-postings"
             onClick={() => setSidebarOpen(false)}
           />
           <NavItem
@@ -237,12 +306,12 @@ const AppContent: React.FC = () => {
           <div className="flex items-center gap-4">
             <button
               onClick={startUploadFlow}
-              className="flex items-center gap-2 bg-[#1BB0A3] hover:bg-[#15968b] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-md shadow-[#1BB0A3]/20"
+              className="flex items-center gap-2 bg-[#3f5ecc] hover:bg-[#3552b8] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-md shadow-[#3f5ecc]/20"
             >
               <UploadCloud className="w-4 h-4" />
               <span>Upload Resume</span>
             </button>
-            <button className="relative p-2 text-slate-400 hover:bg-[#D7E9F4] rounded-lg transition-colors">
+            <button className="relative p-2 text-slate-400 hover:bg-[#eef2ff] rounded-lg transition-colors">
               <Bell className="w-5 h-5" />
               {showNotification && (
                 <span className="absolute top-2 right-2 w-2 h-2 bg-[#E9C7DB] rounded-full ring-2 ring-white"></span>
@@ -250,7 +319,7 @@ const AppContent: React.FC = () => {
             </button>
             <Link
               to="/profile"
-              className="w-8 h-8 rounded-full bg-[#1BB0A3] flex items-center justify-center text-white font-bold text-xs shadow-sm hover:ring-2 hover:ring-offset-1 hover:ring-[#1BB0A3] transition-all"
+              className="w-8 h-8 rounded-full bg-[#3f5ecc] flex items-center justify-center text-white font-bold text-xs shadow-sm hover:ring-2 hover:ring-offset-1 hover:ring-[#3f5ecc] transition-all"
             >
               HR
             </Link>
@@ -285,7 +354,18 @@ const AppContent: React.FC = () => {
                 />
               }
             />
-            <Route path="/market-intel" element={<MarketIntel />} />
+            <Route
+              path="/candidates/:id/review"
+              element={
+                <HRReviewDashboard
+                  candidate={selectedCandidate}
+                  onUpdateCandidate={handleUpdateCandidate}
+                  onBack={() => navigate(`/candidates/${selectedCandidate.id}`)}
+                />
+              }
+            />
+
+            <Route path="/job-postings" element={<JobPostingPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
           </Routes>
@@ -294,6 +374,7 @@ const AppContent: React.FC = () => {
         <ProcessingModal
           isOpen={isProcessing}
           onComplete={handleProcessingComplete}
+          processingResult={rankedCandidates}
         />
         <UploadModal
           isOpen={showUploadModal}
@@ -303,7 +384,7 @@ const AppContent: React.FC = () => {
 
         {/* Toast Notification */}
         {showNotification && (
-          <div className="absolute bottom-6 right-6 bg-[#1BB0A3] text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 shadow-[#1BB0A3]/20 z-50">
+          <div className="absolute bottom-6 right-6 bg-[#3f5ecc] text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 shadow-[#3f5ecc]/20 z-50">
             <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
               <Plus className="w-4 h-4 text-white" />
             </div>
@@ -338,8 +419,8 @@ const NavItem = ({
     onClick={onClick}
     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
       active
-        ? "bg-[#D7E9F4] text-[#1BB0A3]"
-        : "text-slate-500 hover:text-[#1BB0A3] hover:bg-[#F0F7FB]"
+        ? "bg-[#eef2ff] text-[#3f5ecc]"
+        : "text-slate-500 hover:text-[#3f5ecc] hover:bg-[#f5f7ff]"
     }`}
   >
     {icon}
