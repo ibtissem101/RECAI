@@ -29,7 +29,7 @@ import HRReviewDashboard from "./components/HRReviewDashboard";
 import JobPostingPage from "./components/JobPostingPage";
 import CandidateChatBot from "./components/CandidateChatBot";
 import { Candidate, DashboardStats, RankedCandidatesResult } from "./types";
-import { processAndRankResumes } from "./services/geminiService";
+import { processAndRankResumes } from "./services/groqService";
 
 // Mock Data
 const mockStats: DashboardStats = {

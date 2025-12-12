@@ -8,7 +8,7 @@ import {
   CandidateOverview,
   InterviewGuide,
   ScoreAnalysis,
-} from "../services/geminiService";
+} from "../services/groqService";
 import {
   ArrowLeft,
   Mail,

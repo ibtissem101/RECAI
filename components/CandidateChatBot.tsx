@@ -16,7 +16,7 @@ import {
   Maximize2,
 } from "lucide-react";
 import { Candidate } from "../types";
-import { searchCandidatesWithAI, ChatMessage } from "../services/geminiService";
+import { searchCandidatesWithAI, ChatMessage } from "../services/groqService";
 
 interface CandidateChatBotProps {
   candidates: Candidate[];

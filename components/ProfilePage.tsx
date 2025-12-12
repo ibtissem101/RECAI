@@ -125,31 +125,29 @@ const ProfilePage: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex gap-6">
-        {/* Sidebar Tabs */}
-        <div className="w-56 flex-shrink-0">
-          <div className="bg-white rounded-xl border border-[#BDDEF3] shadow-sm overflow-hidden">
-            <nav className="p-2">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === tab.id
-                      ? "bg-[#eef2ff] text-[#3f5ecc]"
-                      : "text-slate-600 hover:bg-[#f5f7ff] hover:text-slate-800"
-                  }`}
-                >
-                  {tab.icon}
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
-          </div>
+      <div className="space-y-6">
+        {/* Horizontal Tabs */}
+        <div className="bg-white rounded-xl border border-[#BDDEF3] shadow-sm overflow-hidden">
+          <nav className="flex items-center gap-1 p-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === tab.id
+                    ? "bg-[#eef2ff] text-[#3f5ecc]"
+                    : "text-slate-600 hover:bg-[#f5f7ff] hover:text-slate-800"
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </nav>
         </div>
 
         {/* Content Area */}
-        <div className="flex-1">
+        <div>
           {activeTab === "overview" && <OverviewTab isEditing={isEditing} />}
           {activeTab === "activity" && <ActivityTab />}
           {activeTab === "preferences" && <PreferencesTab />}

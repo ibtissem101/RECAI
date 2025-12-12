@@ -1,7 +1,47 @@
-import { GoogleGenAI, Type } from "@google/genai";
+// Using Groq API (OpenAI-compatible)
+const GROQ_API_KEY =
+  "xai-858vVrjTmJouvc2jcMxlrpJfxGKadIP2SjvPBe907SRsntLGz58w9SiM4JXfdDRoR8kzu6Msj0ETOmQo";
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
-const apiKey = process.env.API_KEY || "";
-const ai = new GoogleGenAI({ apiKey });
+// Helper function to call Groq API
+const callGroqAPI = async (
+  prompt: string,
+  jsonMode: boolean = true
+): Promise<string> => {
+  const response = await fetch(GROQ_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content: jsonMode
+            ? "You are a helpful assistant. Always respond with valid JSON only, no markdown formatting or code blocks."
+            : "You are a helpful assistant.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 4096,
+      response_format: jsonMode ? { type: "json_object" } : undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Groq API error: ${response.status} - ${error}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0]?.message?.content || "";
+};
 
 export interface ParsedCandidate {
   name: string;
@@ -31,72 +71,66 @@ export const validateIsResume = async (
   documentText: string
 ): Promise<ResumeValidationResult> => {
   try {
-    const model = "gemini-2.5-flash";
     const prompt = `
-      You are an expert document classifier. Analyze the following document text and determine if it is a legitimate resume/CV.
+      You are an expert document classifier. Analyze the following document text and determine if it is a resume/CV.
       
       Document Text (first 4000 characters):
       "${documentText.substring(0, 4000)}"
       
-      A VALID resume/CV MUST contain MOST of these elements:
-      - Personal/Contact information (name, email, phone, or address)
-      - Work experience or employment history with job titles and companies
-      - Education section with degrees, institutions, or certifications
-      - Skills section (technical or soft skills)
-      - Professional summary, objective, or about section
+      ACCEPT as a valid resume/CV if the document contains ANY of these:
+      - A person's name with contact information (email, phone, address)
+      - Work experience or employment history
+      - Education background or qualifications
+      - Skills or competencies listed
+      - Career objective or professional summary
+      - Job titles or roles mentioned
+      - References or referees section
       
-      REJECT documents that are:
-      - Invoices, receipts, or financial documents
-      - Articles, blog posts, or news content
-      - Contracts, legal documents, or agreements
-      - Reports, research papers, or academic papers
-      - Marketing materials, brochures, or advertisements
-      - Random text, gibberish, or unrelated content
-      - Cover letters ONLY (without resume content)
-      - Job descriptions or job postings
-      - Reference letters or recommendation letters only
+      Resume/CV formats to ACCEPT (be very inclusive):
+      - Traditional chronological resumes
+      - Functional/skills-based resumes
+      - Academic CVs (common in education/research)
+      - International CV formats (European, African, Asian styles)
+      - Government/public sector CVs
+      - Hospitality industry CVs
+      - Healthcare professional CVs
+      - Simple text-based resumes
+      - Resumes with tables for education/experience
+      - Entry-level or student resumes
+      - Resumes in any language
       
-      Be STRICT in your evaluation. Only accept documents that are clearly resumes/CVs.
+      Only REJECT if the document is CLEARLY one of these NON-resume types:
+      - Invoice with prices, totals, payment terms
+      - News article with publication date and byline
+      - Legal contract with terms and conditions
+      - Marketing brochure with product prices
+      - Academic research paper with abstract and citations
       
-      Respond with:
-      - isResume: true ONLY if this is clearly a resume/CV, false for anything else
-      - confidence: A number from 0-100 indicating how confident you are (be conservative)
-      - reason: A specific explanation of why this is or isn't a resume (mention what elements you found or didn't find)
-      - documentType: If not a resume, categorize it (e.g., "invoice", "article", "contract", "report", "cover_letter", "job_posting", "unknown")
+      IMPORTANT: If there is ANY doubt, mark it as a resume. The CV you're analyzing may be from any country, industry, or format.
+      A document with a name + ANY career/education/skills info = VALID RESUME.
+      
+      Respond with JSON:
+      {
+        "isResume": true or false (default to true unless clearly not a resume),
+        "confidence": 70-100 for documents with resume elements,
+        "reason": "What resume elements you found",
+        "documentType": "only specify if NOT a resume"
+      }
     `;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            isResume: { type: Type.BOOLEAN },
-            confidence: { type: Type.NUMBER },
-            reason: { type: Type.STRING },
-            documentType: { type: Type.STRING },
-          },
-        },
-      },
-    });
+    const responseText = await callGroqAPI(prompt);
+    const result = JSON.parse(responseText);
 
-    const result = JSON.parse(
-      response.text ||
-        '{"isResume": false, "confidence": 0, "reason": "Could not analyze document", "documentType": "unknown"}'
-    );
-
-    // Extra safety: if confidence is below 60, treat as not a resume even if isResume is true
-    if (result.isResume && result.confidence < 60) {
+    // Only reject if confidence is very low (below 40) - be lenient
+    if (result.isResume && result.confidence < 40) {
       result.isResume = false;
-      result.reason = `Low confidence (${result.confidence}%): ${result.reason}`;
+      result.reason = `Very low confidence (${result.confidence}%): ${result.reason}`;
     }
 
     return result;
   } catch (error) {
     console.error("Resume validation failed:", error);
-    // Fallback: do comprehensive text analysis
+    // Fallback: do comprehensive text analysis - be lenient
     const resumeKeywords = [
       "experience",
       "education",
@@ -120,6 +154,25 @@ export const validateIsResume = async (
       "gpa",
       "professional",
       "career",
+      "projects",
+      "languages",
+      "tools",
+      "technologies",
+      "proficient",
+      "developed",
+      "managed",
+      "led",
+      "created",
+      "implemented",
+      "designed",
+      "built",
+      "software",
+      "engineer",
+      "developer",
+      "analyst",
+      "manager",
+      "intern",
+      "trainee",
     ];
 
     const nonResumeKeywords = [
@@ -156,34 +209,33 @@ export const validateIsResume = async (
       lowerText.includes(kw)
     );
 
-    // Must have at least 4 resume keywords and fewer non-resume keywords
+    // Be lenient: only need 2 resume keywords and check non-resume keywords aren't dominant
     const isLikelyResume =
-      matchedResumeKeywords.length >= 4 && matchedNonResumeKeywords.length < 3;
+      matchedResumeKeywords.length >= 2 && matchedNonResumeKeywords.length < 5;
 
     return {
       isResume: isLikelyResume,
-      confidence: isLikelyResume ? 55 : 25,
+      confidence: isLikelyResume ? 70 : 25,
       reason: isLikelyResume
         ? `Found resume indicators: ${matchedResumeKeywords
-            .slice(0, 4)
+            .slice(0, 5)
             .join(", ")}`
-        : matchedNonResumeKeywords.length >= 3
+        : matchedNonResumeKeywords.length >= 5
         ? `Document appears to be non-resume content. Found: ${matchedNonResumeKeywords
             .slice(0, 3)
             .join(", ")}`
-        : "Document lacks typical resume elements (need work history, education, skills)",
+        : "Document lacks typical resume elements",
       documentType: isLikelyResume ? undefined : "unknown",
     };
   }
 };
 
-// Parse resume text from PDF and extract candidate info using Gemini
+// Parse resume text from PDF and extract candidate info using Groq
 export const parseResumeWithGemini = async (
   resumeText: string,
   targetRole: string = "Software Engineer"
 ): Promise<ParsedCandidate> => {
   try {
-    const model = "gemini-2.5-flash";
     const prompt = `
       You are an expert resume parser. Carefully analyze the following resume text and extract comprehensive candidate information.
       
@@ -207,52 +259,23 @@ export const parseResumeWithGemini = async (
       - Missing emails: leave as empty string
       - Unclear experience: estimate based on graduation year or job history
       
-      Extract and return a JSON object with:
-      - name: Full name of the candidate (required)
-      - email: Email address if found (can be empty)
-      - role: Their most recent or primary job title
-      - experienceYears: Total years of professional experience (number)
-      - skills: Array of ALL technical skills, languages, frameworks, tools mentioned
-      - education: Highest education level and institution
-      - summary: A professional 2-sentence summary highlighting key qualifications
-      - previousCompanies: Array of objects with {name, role, duration, context} for each position
+      Respond with JSON:
+      {
+        "name": "Full name of the candidate",
+        "email": "Email address if found (can be empty string)",
+        "role": "Their most recent or primary job title",
+        "experienceYears": number of years of professional experience,
+        "skills": ["array", "of", "all", "skills"],
+        "education": "Highest education level and institution",
+        "summary": "A professional 2-sentence summary highlighting key qualifications",
+        "previousCompanies": [{"name": "company", "role": "job title", "duration": "time period", "context": "what they did"}]
+      }
     `;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            name: { type: Type.STRING },
-            email: { type: Type.STRING },
-            role: { type: Type.STRING },
-            experienceYears: { type: Type.NUMBER },
-            skills: { type: Type.ARRAY, items: { type: Type.STRING } },
-            education: { type: Type.STRING },
-            summary: { type: Type.STRING },
-            previousCompanies: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  role: { type: Type.STRING },
-                  duration: { type: Type.STRING },
-                  context: { type: Type.STRING },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    return JSON.parse(response.text || "{}");
+    const responseText = await callGroqAPI(prompt);
+    return JSON.parse(responseText);
   } catch (error) {
-    console.error("Gemini Resume Parsing Failed:", error);
+    console.error("Groq Resume Parsing Failed:", error);
     throw error;
   }
 };
@@ -264,7 +287,6 @@ export const scoreCandidateWithGemini = async (
   requiredSkills: string[] = ["JavaScript", "React", "TypeScript", "Node.js"]
 ): Promise<{ score: number; matchReason: string; missingSkills: string[] }> => {
   try {
-    const model = "gemini-2.5-flash";
     const prompt = `
       You are an expert HR recruiter evaluating a candidate for the role of "${targetRole}".
       
@@ -295,34 +317,18 @@ export const scoreCandidateWithGemini = async (
       - Entry-level candidates can still score well if they show potential
       - Senior candidates should be evaluated for leadership qualities
       
-      Provide:
-      1. A total score from 0-100 based on the criteria above
-      2. A match reason: Choose from "Excellent Match", "Strong Skill Match", "Good Fit", "Potential Fit", "Partial Match", "Needs Development", or "Not a Match"
-      3. List ONLY the skills from the required list that the candidate is genuinely missing (be accurate)
+      Respond with JSON:
+      {
+        "score": number from 0-100,
+        "matchReason": "Excellent Match" or "Strong Skill Match" or "Good Fit" or "Potential Fit" or "Partial Match" or "Needs Development" or "Not a Match",
+        "missingSkills": ["array", "of", "missing", "skills"]
+      }
     `;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            score: { type: Type.NUMBER },
-            matchReason: { type: Type.STRING },
-            missingSkills: { type: Type.ARRAY, items: { type: Type.STRING } },
-          },
-        },
-      },
-    });
-
-    return JSON.parse(
-      response.text ||
-        '{ "score": 50, "matchReason": "Under Review", "missingSkills": [] }'
-    );
+    const responseText = await callGroqAPI(prompt);
+    return JSON.parse(responseText);
   } catch (error) {
-    console.error("Gemini Scoring Failed:", error);
+    console.error("Groq Scoring Failed:", error);
     // Fallback scoring based on skill overlap
     const candidateSkillsLower = candidate.skills.map((s) => s.toLowerCase());
     const matchedSkills = requiredSkills.filter((s) =>
@@ -347,7 +353,7 @@ export const scoreCandidateWithGemini = async (
   }
 };
 
-// Extract text from PDF using FileReader (basic text extraction)
+// Extract text from PDF using basic text extraction
 export const extractTextFromPDF = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -356,7 +362,7 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
         const arrayBuffer = e.target?.result as ArrayBuffer;
         const bytes = new Uint8Array(arrayBuffer);
 
-        // Simple text extraction - look for text between stream markers
+        // Basic text extraction from PDF
         let text = "";
         const decoder = new TextDecoder("utf-8", { fatal: false });
         const rawText = decoder.decode(bytes);
@@ -371,66 +377,55 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
             .trim();
         }
 
-        // If we got meaningful text, return it; otherwise return filename as fallback
         if (text.length > 100) {
-          resolve(text.substring(0, 10000)); // Limit to 10k chars
+          console.log(`Extracted ${text.length} chars from ${file.name}`);
+          resolve(text.substring(0, 15000));
         } else {
-          // Fallback - use filename to generate mock data
-          resolve(`Resume for candidate from file: ${file.name}`);
+          // If basic extraction fails, use filename as fallback
+          console.log(
+            `Could not extract text from ${file.name}, using filename`
+          );
+          resolve(`Resume file: ${file.name}`);
         }
       } catch (err) {
+        console.error("PDF extraction error:", err);
         reject(err);
       }
     };
-    reader.onerror = reject;
+    reader.onerror = (err) => {
+      console.error("FileReader error:", err);
+      reject(err);
+    };
     reader.readAsArrayBuffer(file);
   });
 };
 
-// Mocks the extraction analysis but actually uses Gemini to generate the reasoning text dynamically
+// Analyze candidate profile using Groq
 export const analyzeCandidateProfile = async (
   candidateName: string,
   role: string,
   rawText: string
 ) => {
   try {
-    const model = "gemini-2.5-flash";
     const prompt = `
       Analyze the following candidate resume text for the role of ${role}.
       Candidate Name: ${candidateName}
       Resume Text: "${rawText}"
       
-      Provide a JSON response with:
-      1. A professional summary (2 sentences).
-      2. Key technical strengths (array of strings).
-      3. A "culture fit" assessment based on the text.
-      4. Three specific interview questions tailored to their experience.
+      Respond with JSON:
+      {
+        "summary": "A professional summary (2 sentences)",
+        "strengths": ["key", "technical", "strengths"],
+        "cultureFit": "A culture fit assessment based on the text",
+        "interviewQuestions": ["Three", "specific", "interview questions tailored to their experience"]
+      }
     `;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            summary: { type: Type.STRING },
-            strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
-            cultureFit: { type: Type.STRING },
-            interviewQuestions: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-            },
-          },
-        },
-      },
-    });
-
-    return JSON.parse(response.text || "{}");
+    const responseText = await callGroqAPI(prompt);
+    return JSON.parse(responseText);
   } catch (error) {
-    console.error("Gemini Analysis Failed:", error);
-    // Fallback data if API fails or key is missing
+    console.error("Groq Analysis Failed:", error);
+    // Fallback data if API fails
     return {
       summary:
         "Highly experienced engineer with strong background in scalable systems.",
@@ -451,8 +446,6 @@ export const generateEmailDraft = async (
   keyHighlights: string[]
 ) => {
   try {
-    const model = "gemini-2.5-flash";
-
     let statusInstruction = "";
     if (status === "Confirmed" || status === "Interview") {
       statusInstruction =
@@ -474,16 +467,14 @@ export const generateEmailDraft = async (
       For Interview/Confirmed: Mention specific achievements and congratulate them on being selected.
       For Waitlist: Be encouraging, mention they showed promise, and explain the waitlist process.
       For Reject: Be constructive and respectful, encourage them to apply again in the future.
+      
+      Return ONLY the email text, no JSON formatting.
     `;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-    });
-
-    return response.text;
+    const responseText = await callGroqAPI(prompt, false);
+    return responseText;
   } catch (error) {
-    console.error("Gemini Email Generation Failed:", error);
+    console.error("Groq Email Generation Failed:", error);
     if (status === "Confirmed" || status === "Interview") {
       return `Dear ${candidateName},\n\nCongratulations! We are pleased to inform you that you have been selected for an interview. You are among our top candidates and we look forward to meeting you.\n\nBest regards,\nThe Recruitment Team`;
     } else if (status === "Waitlist") {
@@ -567,26 +558,12 @@ export const processAndRankResumes = async (
     try {
       // Extract text from PDF
       const resumeText = await extractTextFromPDF(file);
+      console.log(
+        `Extracted text from ${file.name}: ${resumeText.substring(0, 200)}...`
+      );
 
-      // Validate if this is actually a resume
-      const validation = await validateIsResume(resumeText);
-
-      // Stricter validation: must be a resume AND have at least 70% confidence
-      if (!validation.isResume || validation.confidence < 70) {
-        // This PDF is not a resume or confidence is too low - decline it
-        declinedFiles.push({
-          fileName: file.name,
-          reason:
-            validation.confidence < 70 && validation.isResume
-              ? `Low confidence (${validation.confidence}%): May not be a complete resume. ${validation.reason}`
-              : validation.reason,
-          documentType: validation.documentType,
-        });
-        console.log(
-          `Declined ${file.name}: ${validation.reason} (confidence: ${validation.confidence}%)`
-        );
-        continue; // Skip to next file
-      }
+      // Skip validation for now - just process all PDFs as resumes
+      // The parsing step will handle any issues with non-resume content
 
       // Parse resume with Gemini
       const parsedCandidate = await parseResumeWithGemini(
@@ -730,7 +707,6 @@ export const generateCandidateOverview = async (
   score: number
 ): Promise<CandidateOverview> => {
   try {
-    const model = "gemini-2.5-flash";
     const prompt = `
       You are an expert HR recruiter analyzing a candidate for the role of "${role}".
       
@@ -746,49 +722,27 @@ export const generateCandidateOverview = async (
           .join("; ") || "Not specified"
       }
       
-      Provide a comprehensive AI-powered overview with:
-      1. recommendation: One of "Strong Hire", "Hire", "Maybe", or "No Hire" based on the profile
-      2. summary: A 2-3 sentence executive summary highlighting why this candidate is or isn't a good fit
-      3. keyStrengths: Array of 3-4 specific strengths based on their skills and experience
-      4. areasToProbe: Array of 2-3 areas that need deeper investigation during interviews
-      5. scoreBreakdown: Detailed scores (0-100) for:
-         - technicalSkills: Based on skill match and depth
-         - experienceRelevance: Based on previous roles and companies
-         - educationPedigree: Estimated based on career progression
-         - cultureSoftSkills: Estimated based on role diversity and growth
+      Respond with JSON:
+      {
+        "recommendation": "Strong Hire" or "Hire" or "Maybe" or "No Hire",
+        "summary": "A 2-3 sentence executive summary highlighting why this candidate is or isn't a good fit",
+        "keyStrengths": ["3-4 specific strengths based on their skills and experience"],
+        "areasToProbe": ["2-3 areas that need deeper investigation during interviews"],
+        "scoreBreakdown": {
+          "technicalSkills": number 0-100,
+          "experienceRelevance": number 0-100,
+          "educationPedigree": number 0-100,
+          "cultureSoftSkills": number 0-100
+        }
+      }
       
       Be specific and reference actual skills and companies mentioned.
     `;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            recommendation: { type: Type.STRING },
-            summary: { type: Type.STRING },
-            keyStrengths: { type: Type.ARRAY, items: { type: Type.STRING } },
-            areasToProbe: { type: Type.ARRAY, items: { type: Type.STRING } },
-            scoreBreakdown: {
-              type: Type.OBJECT,
-              properties: {
-                technicalSkills: { type: Type.NUMBER },
-                experienceRelevance: { type: Type.NUMBER },
-                educationPedigree: { type: Type.NUMBER },
-                cultureSoftSkills: { type: Type.NUMBER },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    return JSON.parse(response.text || "{}");
+    const responseText = await callGroqAPI(prompt);
+    return JSON.parse(responseText);
   } catch (error) {
-    console.error("Gemini Overview Generation Failed:", error);
+    console.error("Groq Overview Generation Failed:", error);
     // Fallback response
     return {
       recommendation:
@@ -845,7 +799,6 @@ export const generateInterviewGuide = async (
   experienceYears: number
 ): Promise<InterviewGuide> => {
   try {
-    const model = "gemini-2.5-flash";
     const prompt = `
       You are an expert technical interviewer creating a personalized interview guide for a candidate.
       
@@ -861,59 +814,28 @@ export const generateInterviewGuide = async (
           .join("; ") || "Not specified"
       }
       
-      Generate a comprehensive interview guide with:
+      Respond with JSON:
+      {
+        "questions": [
+          {
+            "topic": "The skill or area being assessed",
+            "question": "A specific, thoughtful question",
+            "lookingFor": "What a good answer should include",
+            "difficulty": "Easy" or "Medium" or "Hard"
+          }
+        ],
+        "scorecardCriteria": ["4-5 evaluation criteria specific to this role"],
+        "interviewTips": ["2-3 tips for the interviewer specific to this candidate"]
+      }
       
-      1. questions: Array of 5-6 tailored interview questions, each with:
-         - topic: The skill or area being assessed (e.g., "System Design", "Python/Django", "Leadership")
-         - question: A specific, thoughtful question referencing their actual experience or skills
-         - lookingFor: What a good answer should include (2-3 key points)
-         - difficulty: "Easy", "Medium", or "Hard"
-      
-      2. scorecardCriteria: Array of 4-5 evaluation criteria specific to this role (e.g., "Technical Proficiency", "System Design", "Communication")
-      
-      3. interviewTips: Array of 2-3 tips for the interviewer specific to this candidate
-      
-      Make questions specific to:
-      - Their stated skills (${skills.slice(0, 3).join(", ")})
-      - Their previous companies and roles
-      - Any missing skills that need verification
-      
+      Include 5-6 questions covering their stated skills, previous companies, and any missing skills.
       Include at least one behavioral question and one technical deep-dive question.
     `;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            questions: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  topic: { type: Type.STRING },
-                  question: { type: Type.STRING },
-                  lookingFor: { type: Type.STRING },
-                  difficulty: { type: Type.STRING },
-                },
-              },
-            },
-            scorecardCriteria: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-            },
-            interviewTips: { type: Type.ARRAY, items: { type: Type.STRING } },
-          },
-        },
-      },
-    });
-
-    return JSON.parse(response.text || "{}");
+    const responseText = await callGroqAPI(prompt);
+    return JSON.parse(responseText);
   } catch (error) {
-    console.error("Gemini Interview Guide Generation Failed:", error);
+    console.error("Groq Interview Guide Generation Failed:", error);
     // Fallback response
     return {
       questions: [
@@ -997,7 +919,6 @@ export const generateScoreAnalysis = async (
   }[]
 ): Promise<ScoreAnalysis> => {
   try {
-    const model = "gemini-2.5-flash";
     const prompt = `
       You are an expert HR analyst providing a detailed score analysis for a candidate.
       
@@ -1013,37 +934,22 @@ export const generateScoreAnalysis = async (
         "Not specified"
       }
       
-      Provide a detailed analysis with:
-      1. overallAssessment: A 2-sentence assessment of the candidate's fit (reference their actual score)
-      2. technicalAnalysis: Analysis of their technical capabilities based on skills (1-2 sentences)
-      3. experienceAnalysis: Analysis of their experience relevance (1-2 sentences)
-      4. growthPotential: Assessment of their growth trajectory and potential (1-2 sentences)
-      5. riskFactors: Array of 2-3 potential risk factors to consider
+      Respond with JSON:
+      {
+        "overallAssessment": "A 2-sentence assessment of the candidate's fit (reference their actual score)",
+        "technicalAnalysis": "Analysis of their technical capabilities based on skills (1-2 sentences)",
+        "experienceAnalysis": "Analysis of their experience relevance (1-2 sentences)",
+        "growthPotential": "Assessment of their growth trajectory and potential (1-2 sentences)",
+        "riskFactors": ["2-3 potential risk factors to consider"]
+      }
       
       Be specific and reference actual data from their profile.
     `;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            overallAssessment: { type: Type.STRING },
-            technicalAnalysis: { type: Type.STRING },
-            experienceAnalysis: { type: Type.STRING },
-            growthPotential: { type: Type.STRING },
-            riskFactors: { type: Type.ARRAY, items: { type: Type.STRING } },
-          },
-        },
-      },
-    });
-
-    return JSON.parse(response.text || "{}");
+    const responseText = await callGroqAPI(prompt);
+    return JSON.parse(responseText);
   } catch (error) {
-    console.error("Gemini Score Analysis Failed:", error);
+    console.error("Groq Score Analysis Failed:", error);
     // Fallback response
     return {
       overallAssessment: `With a score of ${score}/100, ${candidateName} shows ${
@@ -1141,8 +1047,6 @@ export const searchCandidatesWithAI = async (
   conversationHistory: ChatMessage[] = []
 ): Promise<SearchResult> => {
   try {
-    const model = "gemini-2.5-flash";
-
     // Build candidate database context
     const candidateContext = candidates
       .map(
@@ -1197,71 +1101,26 @@ export const searchCandidatesWithAI = async (
       USER QUERY: "${query}"
       
       INSTRUCTIONS:
-      1. Understand the user's intent - they might be asking about:
-         - Skills and technical expertise ("Who knows Python and Go?")
-         - Experience and background ("Who scaled databases at fintech companies?")
-         - Availability and status ("Who could start immediately?")
-         - Leadership potential ("Best candidate for leadership role?")
-         - Online presence ("Strongest portfolio?")
-         - Market insights ("Candidates from companies with recent layoffs?")
-         - Comparisons ("Which candidate is best for X?")
-      
-      2. Search the candidate database semantically - look for:
-         - Exact skill matches
-         - Related/similar skills (e.g., "databases" could match PostgreSQL, MySQL, MongoDB)
-         - Company context clues (fintech companies like Stripe, Square, etc.)
-         - Experience patterns that suggest the queried capability
-         - GitHub/LinkedIn data for online presence queries
-      
+      1. Understand the user's intent - they might be asking about skills, experience, availability, etc.
+      2. Search the candidate database semantically
       3. Rank candidates by relevance to the query (0-100 relevance score)
-      
       4. Provide a conversational, helpful explanation
-      
       5. Suggest relevant follow-up questions
       
-      Respond with:
-      - matchedCandidates: Array of matching candidates with {id, name, relevanceScore (0-100), matchReason (specific reason this candidate matches the query)}
-      - explanation: A helpful, conversational explanation of your findings (2-4 sentences)
-      - suggestedFollowUp: Array of 2-3 relevant follow-up questions the user might want to ask
+      Respond with JSON:
+      {
+        "matchedCandidates": [
+          {"id": "candidate id", "name": "name", "relevanceScore": 0-100, "matchReason": "specific reason this candidate matches"}
+        ],
+        "explanation": "A helpful, conversational explanation of your findings (2-4 sentences)",
+        "suggestedFollowUp": ["2-3 relevant follow-up questions"]
+      }
       
       If no candidates match, return empty matchedCandidates array and explain why.
-      Always be helpful and provide actionable insights.
     `;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            matchedCandidates: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  id: { type: Type.STRING },
-                  name: { type: Type.STRING },
-                  relevanceScore: { type: Type.NUMBER },
-                  matchReason: { type: Type.STRING },
-                },
-              },
-            },
-            explanation: { type: Type.STRING },
-            suggestedFollowUp: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-            },
-          },
-        },
-      },
-    });
-
-    return JSON.parse(
-      response.text ||
-        '{"matchedCandidates": [], "explanation": "Unable to process query", "suggestedFollowUp": []}'
-    );
+    const responseText = await callGroqAPI(prompt);
+    return JSON.parse(responseText);
   } catch (error) {
     console.error("AI Search Failed:", error);
     // Fallback: basic keyword search
@@ -1325,8 +1184,6 @@ export const compareCandidatesWithAI = async (
   winner?: { id: string; name: string; reason: string };
 }> => {
   try {
-    const model = "gemini-2.5-flash";
-
     const selectedCandidates = candidates.filter((c) =>
       candidateIds.includes(c.id)
     );
@@ -1353,39 +1210,16 @@ export const compareCandidatesWithAI = async (
       
       ${candidateContext}
       
-      Provide:
-      1. comparison: A detailed comparison highlighting key differences (3-4 sentences)
-      2. recommendation: Your recommendation on which to prioritize and why
-      3. winner: If one clearly stands out, provide {id, name, reason}
+      Respond with JSON:
+      {
+        "comparison": "A detailed comparison highlighting key differences (3-4 sentences)",
+        "recommendation": "Your recommendation on which to prioritize and why",
+        "winner": {"id": "candidate id", "name": "candidate name", "reason": "why they stand out"} or null if no clear winner
+      }
     `;
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            comparison: { type: Type.STRING },
-            recommendation: { type: Type.STRING },
-            winner: {
-              type: Type.OBJECT,
-              properties: {
-                id: { type: Type.STRING },
-                name: { type: Type.STRING },
-                reason: { type: Type.STRING },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    return JSON.parse(
-      response.text ||
-        '{"comparison": "Unable to compare", "recommendation": "Please try again"}'
-    );
+    const responseText = await callGroqAPI(prompt);
+    return JSON.parse(responseText);
   } catch (error) {
     console.error("AI Comparison Failed:", error);
     return {
