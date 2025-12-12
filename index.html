@@ -55,6 +55,22 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #1bb0a3;
       }
+
+      /* Notification dropdown animation */
+      @keyframes slideDown {
+        from {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .animate-slideDown {
+        animation: slideDown 0.2s ease-out;
+      }
     </style>
     <script type="importmap">
       {
@@ -68,7 +84,6 @@
         }
       }
     </script>
-    <link rel="stylesheet" href="/index.css" />
   </head>
   <body class="bg-[#D7E9F4] text-slate-800 antialiased">
     <div id="root"></div>

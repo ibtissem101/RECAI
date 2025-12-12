@@ -413,7 +413,8 @@ const CandidateList: React.FC<CandidateListProps> = ({
               <div className="pt-3 border-t border-[#f5f7ff] flex justify-between items-center">
                 <span className="text-xs text-slate-400 flex items-center gap-1">
                   <MapPin className="w-3 h-3" />{" "}
-                  {candidate.webVerification.salaryBenchmark.location}
+                  {candidate.webVerification?.salaryBenchmark?.location ||
+                    "Remote"}
                 </span>
                 <button className="text-sm font-medium text-[#3f5ecc] flex items-center gap-1">
                   View <ChevronRight className="w-4 h-4" />
@@ -521,20 +522,26 @@ const CandidateList: React.FC<CandidateListProps> = ({
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-sm text-slate-600">
-                      $
-                      {(
-                        candidate.webVerification.salaryBenchmark.min / 1000
-                      ).toFixed(0)}
-                      k -{" "}
-                      {(
-                        candidate.webVerification.salaryBenchmark.max / 1000
-                      ).toFixed(0)}
-                      k
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      {candidate.webVerification.salaryBenchmark.location}
-                    </p>
+                    {candidate.webVerification?.salaryBenchmark?.min ? (
+                      <>
+                        <p className="text-sm text-slate-600">
+                          $
+                          {(
+                            candidate.webVerification.salaryBenchmark.min / 1000
+                          ).toFixed(0)}
+                          k -{" "}
+                          {(
+                            candidate.webVerification.salaryBenchmark.max / 1000
+                          ).toFixed(0)}
+                          k
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {candidate.webVerification.salaryBenchmark.location}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-slate-400">—</p>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1">

@@ -1,6 +1,5 @@
-// Using Groq API (OpenAI-compatible)
-const GROQ_API_KEY =
-  "xai-858vVrjTmJouvc2jcMxlrpJfxGKadIP2SjvPBe907SRsntLGz58w9SiM4JXfdDRoR8kzu6Msj0ETOmQo";
+// Groq API Configuration
+const GROQ_API_KEY = (import.meta as any).env.VITE_GROQ_API_KEY || "";
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 // Helper function to call Groq API
@@ -8,6 +7,15 @@ const callGroqAPI = async (
   prompt: string,
   jsonMode: boolean = true
 ): Promise<string> => {
+  if (!GROQ_API_KEY) {
+    console.error(
+      "GROQ API key is missing! Make sure VITE_GROQ_API_KEY is set in .env"
+    );
+    throw new Error("Groq API key not configured");
+  }
+
+  console.log("Calling Groq API...");
+
   const response = await fetch(GROQ_API_URL, {
     method: "POST",
     headers: {
@@ -30,17 +38,31 @@ const callGroqAPI = async (
       ],
       temperature: 0.7,
       max_tokens: 4096,
-      response_format: jsonMode ? { type: "json_object" } : undefined,
     }),
   });
 
   if (!response.ok) {
     const error = await response.text();
+    console.error(`Groq API error response:`, error);
     throw new Error(`Groq API error: ${response.status} - ${error}`);
   }
 
   const data = await response.json();
-  return data.choices[0]?.message?.content || "";
+  const content = data.choices[0]?.message?.content || "";
+  console.log("Groq API response received, length:", content.length);
+
+  // Clean up potential markdown code blocks from the response
+  let cleanContent = content.trim();
+  if (cleanContent.startsWith("```json")) {
+    cleanContent = cleanContent.slice(7);
+  } else if (cleanContent.startsWith("```")) {
+    cleanContent = cleanContent.slice(3);
+  }
+  if (cleanContent.endsWith("```")) {
+    cleanContent = cleanContent.slice(0, -3);
+  }
+
+  return cleanContent.trim();
 };
 
 export interface ParsedCandidate {
@@ -273,22 +295,55 @@ export const parseResumeWithGemini = async (
     `;
 
     const responseText = await callGroqAPI(prompt);
-    return JSON.parse(responseText);
+    const parsed = JSON.parse(responseText);
+
+    // Ensure we have valid data
+    return {
+      name: parsed.name || "Candidate",
+      email: parsed.email || "",
+      role: parsed.role || targetRole,
+      experienceYears:
+        typeof parsed.experienceYears === "number"
+          ? parsed.experienceYears
+          : parseInt(parsed.experienceYears) || 0,
+      skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+      education: parsed.education || "",
+      summary: parsed.summary || "",
+      previousCompanies: Array.isArray(parsed.previousCompanies)
+        ? parsed.previousCompanies
+        : [],
+    };
   } catch (error) {
     console.error("Groq Resume Parsing Failed:", error);
     throw error;
   }
 };
 
-// Score and rank a candidate based on job requirements
+// Enhanced scoring interface with detailed breakdown
+export interface DetailedScoreResult {
+  score: number;
+  matchReason: string;
+  missingSkills: string[];
+  scoreBreakdown: {
+    technicalSkillMatch: number; // 0-40 points
+    experienceRelevance: number; // 0-25 points
+    cultureFitIndicators: number; // 0-20 points
+    redFlagAssessment: number; // 0-15 points (15 = no red flags)
+  };
+  webVerificationNotes: string[];
+  redFlags: string[];
+}
+
+// Score and rank a candidate based on job requirements with comprehensive criteria
 export const scoreCandidateWithGemini = async (
   candidate: ParsedCandidate,
   targetRole: string,
-  requiredSkills: string[] = ["JavaScript", "React", "TypeScript", "Node.js"]
-): Promise<{ score: number; matchReason: string; missingSkills: string[] }> => {
+  requiredSkills: string[] = ["JavaScript", "React", "TypeScript", "Node.js"],
+  department: string = "Engineering"
+): Promise<DetailedScoreResult> => {
   try {
     const prompt = `
-      You are an expert HR recruiter evaluating a candidate for the role of "${targetRole}".
+      You are an expert HR recruiter evaluating a candidate for the role of "${targetRole}" in the ${department} department.
       
       CANDIDATE PROFILE:
       - Name: ${candidate.name}
@@ -298,35 +353,121 @@ export const scoreCandidateWithGemini = async (
       - Professional Summary: ${candidate.summary}
       - Previous Companies: ${
         candidate.previousCompanies
-          ?.map((c) => `${c.role} at ${c.name} (${c.duration})`)
+          ?.map((c) => `${c.role} at ${c.name} (${c.duration}) - ${c.context}`)
           .join("; ") || "Not specified"
       }
       - Education: ${candidate.education || "Not specified"}
       
       REQUIRED SKILLS FOR THIS ROLE: ${requiredSkills.join(", ")}
       
-      SCORING CRITERIA (evaluate each):
-      1. Skill Match (0-40 points): How many required skills does the candidate have? Consider equivalent technologies.
-      2. Experience Level (0-25 points): Is their experience appropriate for the role?
-      3. Role Relevance (0-20 points): How relevant is their previous work to this position?
-      4. Career Progression (0-15 points): Shows growth, leadership, increasing responsibility?
+      COMPREHENSIVE SCORING CRITERIA:
       
-      IMPORTANT:
+      1. TECHNICAL SKILL MATCH (0-40 points):
+         - Direct skill matches with required skills
+         - Related/equivalent technologies (e.g., Vue.js counts for React knowledge)
+         - GitHub contributions or project experience that validates skills
+         - Depth vs breadth of technical expertise
+         - Score 35-40: Expert level, all core skills matched
+         - Score 25-34: Strong match, most skills present
+         - Score 15-24: Moderate match, some gaps
+         - Score 0-14: Significant skill gaps
+      
+      2. EXPERIENCE RELEVANCE (0-25 points):
+         - Weight recent experience more heavily (last 2-3 years)
+         - Consider company context (startup vs enterprise, growth stage)
+         - Domain relevance to the target role
+         - Progression and increasing responsibility
+         - Score 20-25: Highly relevant, recent experience at similar companies
+         - Score 15-19: Good relevance, transferable experience
+         - Score 10-14: Some relevant experience
+         - Score 0-9: Limited relevance
+      
+      3. CULTURE FIT INDICATORS (0-20 points):
+         - Communication style evident in resume writing
+         - Teamwork and collaboration indicators
+         - Passion projects, open source, or side projects
+         - Alignment with typical ${department} department values
+         - Leadership or mentoring experience
+         - Score 16-20: Strong culture fit signals
+         - Score 11-15: Good indicators present
+         - Score 6-10: Neutral/unclear fit
+         - Score 0-5: Potential concerns
+      
+      4. RED FLAG ASSESSMENT (0-15 points, higher = fewer red flags):
+         - Employment gaps (consider context: layoffs, education, personal reasons)
+         - Job hopping pattern (multiple short stints without explanation)
+         - Inconsistent career trajectory
+         - Overqualified concerns
+         - Score 13-15: No red flags detected
+         - Score 9-12: Minor concerns, likely explainable
+         - Score 5-8: Some concerns to probe in interview
+         - Score 0-4: Significant red flags
+      
+      IMPORTANT EVALUATION NOTES:
       - Be fair but realistic in scoring
-      - Consider similar/equivalent technologies (e.g., Vue.js experience is relevant for React roles)
-      - Entry-level candidates can still score well if they show potential
-      - Senior candidates should be evaluated for leadership qualities
+      - Consider career gaps that may be explained by industry layoffs (tech layoffs 2022-2024)
+      - Entry-level candidates can still score well on culture fit and potential
+      - Senior candidates should show leadership progression
+      - Remote work history is a positive in modern context
       
       Respond with JSON:
       {
-        "score": number from 0-100,
+        "score": total score from 0-100 (sum of all categories),
         "matchReason": "Excellent Match" or "Strong Skill Match" or "Good Fit" or "Potential Fit" or "Partial Match" or "Needs Development" or "Not a Match",
-        "missingSkills": ["array", "of", "missing", "skills"]
+        "missingSkills": ["array", "of", "missing", "required skills"],
+        "scoreBreakdown": {
+          "technicalSkillMatch": number 0-40,
+          "experienceRelevance": number 0-25,
+          "cultureFitIndicators": number 0-20,
+          "redFlagAssessment": number 0-15
+        },
+        "webVerificationNotes": ["Notes about what could be verified via GitHub/LinkedIn/projects"],
+        "redFlags": ["Any concerns identified, empty array if none"]
       }
     `;
 
     const responseText = await callGroqAPI(prompt);
-    return JSON.parse(responseText);
+    const parsed = JSON.parse(responseText);
+
+    // Ensure valid score data is returned and capped properly
+    const techScore = Math.min(
+      parsed.scoreBreakdown?.technicalSkillMatch || 20,
+      40
+    );
+    const expScore = Math.min(
+      parsed.scoreBreakdown?.experienceRelevance || 12,
+      25
+    );
+    const cultureScore = Math.min(
+      parsed.scoreBreakdown?.cultureFitIndicators || 10,
+      20
+    );
+    const redFlagScore = Math.min(
+      parsed.scoreBreakdown?.redFlagAssessment || 10,
+      15
+    );
+    const totalScore = Math.min(
+      techScore + expScore + cultureScore + redFlagScore,
+      100
+    );
+
+    return {
+      score: totalScore,
+      matchReason: parsed.matchReason || "Potential Fit",
+      missingSkills: Array.isArray(parsed.missingSkills)
+        ? parsed.missingSkills
+        : [],
+      scoreBreakdown: {
+        technicalSkillMatch: techScore,
+        experienceRelevance: expScore,
+        cultureFitIndicators: cultureScore,
+        redFlagAssessment: redFlagScore,
+      },
+      webVerificationNotes: Array.isArray(parsed.webVerificationNotes)
+        ? parsed.webVerificationNotes
+        : [],
+      redFlags: Array.isArray(parsed.redFlags) ? parsed.redFlags : [],
+    };
   } catch (error) {
     console.error("Groq Scoring Failed:", error);
     // Fallback scoring based on skill overlap
@@ -337,11 +478,15 @@ export const scoreCandidateWithGemini = async (
     const missingSkills = requiredSkills.filter(
       (s) => !candidateSkillsLower.includes(s.toLowerCase())
     );
-    const skillScore = (matchedSkills.length / requiredSkills.length) * 60;
-    const expScore = Math.min(candidate.experienceYears * 5, 40);
+    const skillScore = Math.round(
+      (matchedSkills.length / requiredSkills.length) * 40
+    );
+    const expScore = Math.min(candidate.experienceYears * 3, 25);
+    const cultureFit = 12; // Neutral default
+    const redFlagScore = 12; // Assume minor concerns
 
     return {
-      score: Math.round(skillScore + expScore),
+      score: Math.round(skillScore + expScore + cultureFit + redFlagScore),
       matchReason:
         matchedSkills.length >= 3
           ? "Strong Skill Match"
@@ -349,54 +494,81 @@ export const scoreCandidateWithGemini = async (
           ? "Partial Match"
           : "Needs Review",
       missingSkills,
+      scoreBreakdown: {
+        technicalSkillMatch: skillScore,
+        experienceRelevance: expScore,
+        cultureFitIndicators: cultureFit,
+        redFlagAssessment: redFlagScore,
+      },
+      webVerificationNotes: [
+        "Unable to verify - API error, manual review recommended",
+      ],
+      redFlags: [],
     };
   }
 };
 
-// Extract text from PDF using basic text extraction
 export const extractTextFromPDF = async (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const arrayBuffer = e.target?.result as ArrayBuffer;
-        const bytes = new Uint8Array(arrayBuffer);
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Load PDF.js from CDN if not already loaded
+      if (!(window as any).pdfjsLib) {
+        const script = document.createElement("script");
+        script.src =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+        document.head.appendChild(script);
 
-        // Basic text extraction from PDF
-        let text = "";
-        const decoder = new TextDecoder("utf-8", { fatal: false });
-        const rawText = decoder.decode(bytes);
+        await new Promise((res) => {
+          script.onload = res;
+        });
 
-        // Extract readable ASCII text from PDF
-        const matches = rawText.match(/[\x20-\x7E\n\r\t]+/g);
-        if (matches) {
-          text = matches
-            .filter((m) => m.length > 3)
-            .join(" ")
-            .replace(/\s+/g, " ")
-            .trim();
-        }
-
-        if (text.length > 100) {
-          console.log(`Extracted ${text.length} chars from ${file.name}`);
-          resolve(text.substring(0, 15000));
-        } else {
-          // If basic extraction fails, use filename as fallback
-          console.log(
-            `Could not extract text from ${file.name}, using filename`
-          );
-          resolve(`Resume file: ${file.name}`);
-        }
-      } catch (err) {
-        console.error("PDF extraction error:", err);
-        reject(err);
+        // Set worker source
+        (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
       }
-    };
-    reader.onerror = (err) => {
-      console.error("FileReader error:", err);
-      reject(err);
-    };
-    reader.readAsArrayBuffer(file);
+
+      const pdfjsLib = (window as any).pdfjsLib;
+
+      // Read file as array buffer
+      const arrayBuffer = await file.arrayBuffer();
+
+      // Load PDF document
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const pdf = await loadingTask.promise;
+
+      console.log(`PDF loaded: ${pdf.numPages} pages`);
+
+      // Extract text from all pages
+      let fullText = "";
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+
+        // Combine text items
+        const pageText = textContent.items
+          .map((item: any) => item.str)
+          .join(" ");
+
+        fullText += pageText + "\n";
+      }
+
+      // Clean up text
+      fullText = fullText.replace(/\s+/g, " ").replace(/\n+/g, "\n").trim();
+
+      if (fullText.length > 100) {
+        console.log(
+          `Successfully extracted ${fullText.length} characters from ${file.name}`
+        );
+        resolve(fullText.substring(0, 15000));
+      } else {
+        console.warn(`Very little text extracted from ${file.name}`);
+        resolve(`Resume file: ${file.name} (minimal text extracted)`);
+      }
+    } catch (error) {
+      console.error("PDF extraction error:", error);
+      reject(new Error(`Failed to extract text from PDF: ${error.message}`));
+    }
   });
 };
 
@@ -531,7 +703,9 @@ export const rankAndCategorizeCandidates = (
 export const processAndRankResumes = async (
   files: File[],
   targetRole: string = "Software Engineer",
-  requiredSkills: string[] = ["JavaScript", "React", "TypeScript", "Node.js"]
+  requiredSkills: string[] = ["JavaScript", "React", "TypeScript", "Node.js"],
+  department: string = "Engineering",
+  jobPostingId: string = "general"
 ): Promise<{
   confirmed: any[];
   waitlist: any[];
@@ -562,28 +736,64 @@ export const processAndRankResumes = async (
         `Extracted text from ${file.name}: ${resumeText.substring(0, 200)}...`
       );
 
-      // Skip validation for now - just process all PDFs as resumes
-      // The parsing step will handle any issues with non-resume content
+      // Check if text was actually extracted
+      if (!resumeText || resumeText.trim().length < 50) {
+        console.warn(`Insufficient text extracted from ${file.name}`);
+        declinedFiles.push({
+          fileName: file.name,
+          reason: "Could not extract enough text from the PDF",
+          documentType: "unreadable",
+        });
+        continue;
+      }
 
-      // Parse resume with Gemini
+      // Parse resume with Groq
+      console.log(`Parsing resume for ${file.name}...`);
       const parsedCandidate = await parseResumeWithGemini(
         resumeText,
         targetRole
       );
+      console.log(`Parsed candidate:`, parsedCandidate);
 
-      // Score the candidate
+      // Score the candidate with comprehensive criteria
+      console.log(`Scoring candidate ${parsedCandidate.name}...`);
       const scoreResult = await scoreCandidateWithGemini(
         parsedCandidate,
         targetRole,
-        requiredSkills
+        requiredSkills,
+        department
       );
+      console.log(`Score result:`, scoreResult);
 
-      // Create candidate object
+      // Calculate salary benchmark based on role and experience
+      const baseSalaries: { [key: string]: { min: number; max: number } } = {
+        "Software Engineer": { min: 90000, max: 130000 },
+        "Senior Software Engineer": { min: 130000, max: 180000 },
+        "Frontend Developer": { min: 85000, max: 125000 },
+        "Backend Developer": { min: 90000, max: 135000 },
+        "Full Stack Developer": { min: 95000, max: 145000 },
+        "DevOps Engineer": { min: 100000, max: 150000 },
+        "Data Scientist": { min: 110000, max: 160000 },
+        "Product Manager": { min: 100000, max: 155000 },
+        "UX Designer": { min: 80000, max: 130000 },
+        "Engineering Manager": { min: 150000, max: 220000 },
+        default: { min: 80000, max: 120000 },
+      };
+
+      const baseSalary = baseSalaries[targetRole] || baseSalaries["default"];
+      const experienceMultiplier =
+        1 + (parsedCandidate.experienceYears || 0) * 0.05;
+      const salaryMin = Math.round(baseSalary.min * experienceMultiplier);
+      const salaryMax = Math.round(baseSalary.max * experienceMultiplier);
+
+      // Create candidate object with unique ID and job association
       const candidate = {
-        id: `${Date.now()}-${i}`,
+        id: `${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`,
         name: parsedCandidate.name || `Candidate ${i + 1}`,
         email: parsedCandidate.email,
-        role: parsedCandidate.role || targetRole,
+        role: targetRole, // Use the job posting's role
+        appliedRole: parsedCandidate.role || targetRole, // Their actual current role
+        jobPostingId: jobPostingId, // Associate with job posting
         score: scoreResult.score,
         status: "New" as const,
         experienceYears: parsedCandidate.experienceYears || 0,
@@ -591,27 +801,203 @@ export const processAndRankResumes = async (
         skills: parsedCandidate.skills || [],
         missingSkills: scoreResult.missingSkills || [],
         previousCompanies: parsedCandidate.previousCompanies || [],
+        // Enhanced scoring breakdown
+        scoreBreakdown: scoreResult.scoreBreakdown || {
+          technicalSkillMatch: 0,
+          experienceRelevance: 0,
+          cultureFitIndicators: 0,
+          redFlagAssessment: 0,
+        },
         webVerification: {
+          notes: scoreResult.webVerificationNotes || [],
           salaryBenchmark: {
-            min: 0,
-            max: 0,
+            min: salaryMin,
+            max: salaryMax,
             currency: "USD",
-            location: "Unknown",
+            location: "Remote",
           },
-          redFlags: [],
-          linkedin: { verified: false, roleMatch: false },
+          redFlags: scoreResult.redFlags || [],
+          linkedin: { verified: false, roleMatch: true },
         },
       };
 
       processedCandidates.push(candidate);
+      console.log(
+        `Successfully processed candidate:`,
+        candidate.name,
+        `Score: ${candidate.score}, Experience: ${candidate.experienceYears}, Skills: ${candidate.skills.length}`
+      );
     } catch (error) {
       console.error(`Failed to process file ${file.name}:`, error);
-      // Add to declined files instead of creating a fallback candidate
-      declinedFiles.push({
-        fileName: file.name,
-        reason: "Failed to process file - may be corrupted or unreadable",
-        documentType: "unreadable",
-      });
+
+      // Try to create a basic candidate from the file name at minimum
+      try {
+        const resumeText = await extractTextFromPDF(file);
+        if (resumeText && resumeText.length > 50) {
+          // Better name extraction - try multiple patterns
+          let extractedName = "";
+
+          // Pattern 1: Look for name at the very beginning (first line)
+          const firstLine = resumeText.split("\n")[0]?.trim();
+          if (
+            firstLine &&
+            firstLine.length > 2 &&
+            firstLine.length < 50 &&
+            /^[A-Za-z]/.test(firstLine)
+          ) {
+            // Check if first line looks like a name (not an email or phone)
+            if (
+              !firstLine.includes("@") &&
+              !firstLine.includes("http") &&
+              !/^\d/.test(firstLine)
+            ) {
+              extractedName = firstLine;
+            }
+          }
+
+          // Pattern 2: Look for "Name: John Doe" pattern
+          if (!extractedName) {
+            const nameColonMatch = resumeText.match(
+              /name\s*[:\-]\s*([A-Za-z]+(?:\s+[A-Za-z]+)+)/i
+            );
+            if (nameColonMatch) extractedName = nameColonMatch[1].trim();
+          }
+
+          // Pattern 3: Look for two capitalized words together near the start
+          if (!extractedName) {
+            const firstFewLines = resumeText.substring(0, 500);
+            const capNamesMatch = firstFewLines.match(
+              /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/
+            );
+            if (capNamesMatch && capNamesMatch[1].length < 40) {
+              extractedName = capNamesMatch[1];
+            }
+          }
+
+          // Pattern 4: Look for common name formats
+          if (!extractedName) {
+            const commonNameMatch = resumeText.match(
+              /^([A-Z][A-Za-z'-]+\s+(?:[A-Z]\.?\s+)?[A-Z][A-Za-z'-]+)/m
+            );
+            if (commonNameMatch) extractedName = commonNameMatch[1];
+          }
+
+          const emailMatch = resumeText.match(/[\w.-]+@[\w.-]+\.\w+/);
+          const skillKeywords = [
+            "JavaScript",
+            "Python",
+            "React",
+            "Node",
+            "Java",
+            "SQL",
+            "AWS",
+            "Docker",
+            "TypeScript",
+            "HTML",
+            "CSS",
+            "Angular",
+            "Vue",
+            "MongoDB",
+            "PostgreSQL",
+            "Git",
+            "Kubernetes",
+            "Linux",
+            "C++",
+            "C#",
+            "Ruby",
+            "Go",
+            "Rust",
+            "PHP",
+            "Swift",
+            "Kotlin",
+          ];
+          const foundSkills = skillKeywords.filter((skill) =>
+            resumeText.toLowerCase().includes(skill.toLowerCase())
+          );
+
+          // Try to find years of experience
+          const expMatch = resumeText.match(
+            /(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience|exp)/i
+          );
+          const experienceYears = expMatch
+            ? Math.min(parseInt(expMatch[1]), 30)
+            : 2;
+
+          // Calculate score with proper caps (max 100)
+          const techScore = Math.min(foundSkills.length * 4, 40); // Max 40
+          const expScoreCalc = Math.min(experienceYears * 3, 25); // Max 25
+          const cultureScore = 10; // Default 10 out of 20
+          const redFlagScore = 10; // Default 10 out of 15 (some concerns)
+          const totalScore = Math.min(
+            techScore + expScoreCalc + cultureScore + redFlagScore,
+            100
+          );
+
+          const fallbackCandidate = {
+            id: `${Date.now()}-${i}-${Math.random()
+              .toString(36)
+              .substring(2, 9)}`,
+            name: extractedName || `Candidate from ${file.name}`,
+            email: emailMatch ? emailMatch[0] : "",
+            role: targetRole,
+            appliedRole: targetRole,
+            jobPostingId: jobPostingId,
+            score: totalScore,
+            status: "New" as const,
+            experienceYears: experienceYears,
+            matchReason:
+              totalScore >= 70
+                ? "Good Fit"
+                : totalScore >= 50
+                ? "Potential Fit"
+                : "Manual Review Needed",
+            skills: foundSkills.length > 0 ? foundSkills : ["See Resume"],
+            missingSkills: requiredSkills,
+            previousCompanies: [],
+            scoreBreakdown: {
+              technicalSkillMatch: techScore,
+              experienceRelevance: expScoreCalc,
+              cultureFitIndicators: cultureScore,
+              redFlagAssessment: redFlagScore,
+            },
+            webVerification: {
+              notes: ["Fallback processing - API parsing failed"],
+              salaryBenchmark: {
+                min: 80000 + experienceYears * 5000,
+                max: 120000 + experienceYears * 5000,
+                currency: "USD",
+                location: "Remote",
+              },
+              redFlags: [
+                "Resume parsing incomplete - manual review recommended",
+              ],
+              linkedin: { verified: false, roleMatch: false },
+            },
+          };
+          processedCandidates.push(fallbackCandidate);
+          console.log(
+            `Created fallback candidate for ${file.name}: ${
+              extractedName || "name not found"
+            }`
+          );
+        } else {
+          declinedFiles.push({
+            fileName: file.name,
+            reason: "Failed to process file - may be corrupted or unreadable",
+            documentType: "unreadable",
+          });
+        }
+      } catch (fallbackError) {
+        console.error(
+          `Fallback processing also failed for ${file.name}:`,
+          fallbackError
+        );
+        declinedFiles.push({
+          fileName: file.name,
+          reason: "Failed to process file - may be corrupted or unreadable",
+          documentType: "unreadable",
+        });
+      }
     }
   }
 

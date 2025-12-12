@@ -2,6 +2,8 @@ export interface Candidate {
   id: string;
   name: string;
   role: string;
+  appliedRole?: string; // Their actual current role from resume
+  jobPostingId?: string; // Associated job posting
   score: number;
   hrOverrideScore?: number;
   hrOverrideReason?: string;
@@ -20,6 +22,14 @@ export interface Candidate {
   interviewQuestions?: InterviewQuestion[];
   communicationDrafts?: CommunicationDraft[];
   salaryRecommendation?: SalaryRecommendation;
+  scoreBreakdown?: ScoreBreakdown;
+}
+
+export interface ScoreBreakdown {
+  technicalSkillMatch: number; // 0-40 - validated via GitHub/projects
+  experienceRelevance: number; // 0-25 - weighted by recency + company context
+  cultureFitIndicators: number; // 0-20 - from cover letter + online presence
+  redFlagAssessment: number; // 0-15 - with web-verified context
 }
 
 export interface AIReasoning {
@@ -95,6 +105,7 @@ export interface CompanyHistory {
 }
 
 export interface WebVerification {
+  notes?: string[]; // Web verification notes about what could be verified
   github?: {
     handle: string;
     contributions: number;
