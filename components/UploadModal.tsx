@@ -70,7 +70,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpload }) 
             {/* Drop Zone */}
             <div 
                 className={`relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center text-center transition-all cursor-pointer
-                    ${dragActive ? 'border-[#1BB0A3] bg-[#F0F7FB]' : 'border-slate-300 hover:border-[#1BB0A3] hover:bg-slate-50'}`}
+                    ${dragActive ? 'border-[#3f5ecc] bg-[#f5f7ff]' : 'border-slate-300 hover:border-[#3f5ecc] hover:bg-slate-50'}`}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
@@ -86,8 +86,8 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpload }) 
                     onChange={handleChange}
                 />
                 
-                <div className="w-16 h-16 bg-[#D7E9F4] rounded-full flex items-center justify-center mb-4">
-                    <UploadCloud className="w-8 h-8 text-[#1BB0A3]" />
+                <div className="w-16 h-16 bg-[#eef2ff] rounded-full flex items-center justify-center mb-4">
+                    <UploadCloud className="w-8 h-8 text-[#3f5ecc]" />
                 </div>
                 <h3 className="text-lg font-semibold text-slate-700">Click to upload or drag and drop</h3>
                 <p className="text-slate-500 mt-1">PDF files only (Max 10MB per file)</p>
@@ -145,7 +145,7 @@ const UploadModal: React.FC<UploadModalProps> = ({ isOpen, onClose, onUpload }) 
                 disabled={files.length === 0}
                 className={`px-6 py-2 rounded-lg font-medium text-white transition-all flex items-center gap-2
                     ${files.length > 0 
-                        ? 'bg-[#1BB0A3] hover:bg-[#15968b] shadow-lg shadow-[#1BB0A3]/20' 
+                        ? 'bg-[#3f5ecc] hover:bg-[#3552b8] shadow-lg shadow-[#3f5ecc]/20' 
                         : 'bg-slate-300 cursor-not-allowed'}`}
             >
                 <UploadCloud size={18} />
