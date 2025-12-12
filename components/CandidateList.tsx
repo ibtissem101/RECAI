@@ -12,11 +12,15 @@ import {
   MapPin,
   Briefcase,
   ChevronRight,
+  Brain,
+  Eye,
 } from "lucide-react";
 import { Candidate } from "../types";
 
 interface CandidateListProps {
   onSelectCandidate: (candidate: Candidate) => void;
+  onReviewCandidate?: (candidate: Candidate) => void;
+  candidates?: Candidate[];
 }
 
 // Mock Data Generator
@@ -206,10 +210,18 @@ const generateCandidates = (): Candidate[] => {
   ];
 };
 
-const CandidateList: React.FC<CandidateListProps> = ({ onSelectCandidate }) => {
+const CandidateList: React.FC<CandidateListProps> = ({
+  onSelectCandidate,
+  onReviewCandidate,
+  candidates: propCandidates,
+}) => {
   const [filterStatus, setFilterStatus] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState("");
-  const [candidates] = useState<Candidate[]>(generateCandidates());
+  const [candidates] = useState<Candidate[]>(
+    propCandidates && propCandidates.length > 0
+      ? propCandidates
+      : generateCandidates()
+  );
 
   const filteredCandidates = useMemo(() => {
     return candidates.filter((c) => {
@@ -525,9 +537,30 @@ const CandidateList: React.FC<CandidateListProps> = ({ onSelectCandidate }) => {
                     </p>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button className="p-2 text-slate-400 hover:text-[#3f5ecc] hover:bg-[#eef2ff] rounded-full transition-colors opacity-0 group-hover:opacity-100">
-                      <ChevronRight className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      {onReviewCandidate && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onReviewCandidate(candidate);
+                          }}
+                          className="p-2 text-slate-400 hover:text-[#3f5ecc] hover:bg-[#eef2ff] rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                          title="AI Review"
+                        >
+                          <Brain className="w-4 h-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectCandidate(candidate);
+                        }}
+                        className="p-2 text-slate-400 hover:text-[#3f5ecc] hover:bg-[#eef2ff] rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                        title="View Details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

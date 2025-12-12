@@ -129,4 +129,5 @@ export interface ProcessingStep {
   label: string;
   status: "pending" | "processing" | "completed";
   detail?: string;
+  icon?: string;
 }

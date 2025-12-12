@@ -27,6 +27,7 @@ import ProcessingModal from "./components/ProcessingModal";
 import UploadModal from "./components/UploadModal";
 import HRReviewDashboard from "./components/HRReviewDashboard";
 import JobPostingPage from "./components/JobPostingPage";
+import CandidateChatBot from "./components/CandidateChatBot";
 import { Candidate, DashboardStats, RankedCandidatesResult } from "./types";
 import { processAndRankResumes } from "./services/geminiService";
 
@@ -88,14 +89,22 @@ const AppContent: React.FC = () => {
   const [rankedCandidates, setRankedCandidates] =
     useState<RankedCandidatesResult | null>(null);
   const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
+  const [uploadedFileCount, setUploadedFileCount] = useState(0);
 
   const startUploadFlow = () => {
     setShowUploadModal(true);
   };
 
+  const handleCancelProcessing = () => {
+    setIsProcessing(false);
+    setRankedCandidates(null);
+    setUploadedFileCount(0);
+  };
+
   const handleUploadComplete = async (files: File[]) => {
     setShowUploadModal(false);
     setIsProcessing(true);
+    setUploadedFileCount(files.length);
 
     try {
       // Process and rank resumes using Gemini AI
@@ -131,18 +140,20 @@ const AppContent: React.FC = () => {
       setSelectedCandidate(result.allRanked[0] as Candidate);
       // Navigate to candidates list to show all ranked candidates
       navigate("/candidates");
-    } else {
-      setSelectedCandidate(defaultCandidate);
-      navigate("/candidates/1");
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 5000);
     }
-
-    setShowNotification(true);
-    setTimeout(() => setShowNotification(false), 5000);
+    // If no valid resumes were found, just close the modal without navigating
   };
 
   const handleSelectCandidate = (candidate: Candidate) => {
     setSelectedCandidate(candidate);
     navigate(`/candidates/${candidate.id}`);
+  };
+
+  const handleReviewCandidate = (candidate: Candidate) => {
+    setSelectedCandidate(candidate);
+    navigate(`/candidates/${candidate.id}/review`);
   };
 
   const handleUpdateCandidate = (updated: Candidate) => {
@@ -342,7 +353,11 @@ const AppContent: React.FC = () => {
             <Route
               path="/candidates"
               element={
-                <CandidateList onSelectCandidate={handleSelectCandidate} />
+                <CandidateList
+                  onSelectCandidate={handleSelectCandidate}
+                  onReviewCandidate={handleReviewCandidate}
+                  candidates={allCandidates}
+                />
               }
             />
             <Route
@@ -374,12 +389,20 @@ const AppContent: React.FC = () => {
         <ProcessingModal
           isOpen={isProcessing}
           onComplete={handleProcessingComplete}
+          onCancel={handleCancelProcessing}
           processingResult={rankedCandidates}
+          fileCount={uploadedFileCount}
         />
         <UploadModal
           isOpen={showUploadModal}
           onClose={() => setShowUploadModal(false)}
           onUpload={handleUploadComplete}
+        />
+
+        {/* AI Candidate Search Chatbot */}
+        <CandidateChatBot
+          candidates={allCandidates}
+          onSelectCandidate={handleSelectCandidate}
         />
 
         {/* Toast Notification */}

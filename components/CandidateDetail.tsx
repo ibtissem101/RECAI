@@ -1,6 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Candidate } from "../types";
+import {
+  generateCandidateOverview,
+  generateInterviewGuide,
+  generateScoreAnalysis,
+  CandidateOverview,
+  InterviewGuide,
+  ScoreAnalysis,
+} from "../services/geminiService";
 import {
   ArrowLeft,
   Mail,
@@ -26,6 +34,7 @@ import {
   ShieldCheck,
   Calculator,
   Shield,
+  Loader2,
 } from "lucide-react";
 
 interface CandidateDetailProps {
@@ -42,8 +51,125 @@ const CandidateDetail: React.FC<CandidateDetailProps> = ({
     "overview" | "resume" | "interview"
   >("overview");
 
-  const getScoreBreakdown = (score: number) => {
-    // Mock logic to distribute score for visualization
+  // AI-generated content states
+  const [overview, setOverview] = useState<CandidateOverview | null>(null);
+  const [interviewGuide, setInterviewGuide] = useState<InterviewGuide | null>(
+    null
+  );
+  const [scoreAnalysis, setScoreAnalysis] = useState<ScoreAnalysis | null>(
+    null
+  );
+  const [loadingOverview, setLoadingOverview] = useState(false);
+  const [loadingInterview, setLoadingInterview] = useState(false);
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false);
+
+  // Load AI content when section changes
+  useEffect(() => {
+    const loadOverviewContent = async () => {
+      if (activeSection === "overview" && !overview && !loadingOverview) {
+        setLoadingOverview(true);
+        setLoadingAnalysis(true);
+        try {
+          const [overviewData, analysisData] = await Promise.all([
+            generateCandidateOverview(
+              candidate.name,
+              candidate.role,
+              candidate.skills,
+              candidate.missingSkills,
+              candidate.experienceYears,
+              candidate.previousCompanies,
+              candidate.score
+            ),
+            generateScoreAnalysis(
+              candidate.name,
+              candidate.role,
+              candidate.score,
+              candidate.skills,
+              candidate.missingSkills,
+              candidate.experienceYears,
+              candidate.previousCompanies
+            ),
+          ]);
+          setOverview(overviewData);
+          setScoreAnalysis(analysisData);
+        } catch (error) {
+          console.error("Failed to load overview content:", error);
+        } finally {
+          setLoadingOverview(false);
+          setLoadingAnalysis(false);
+        }
+      }
+    };
+
+    const loadInterviewContent = async () => {
+      if (
+        activeSection === "interview" &&
+        !interviewGuide &&
+        !loadingInterview
+      ) {
+        setLoadingInterview(true);
+        try {
+          const guideData = await generateInterviewGuide(
+            candidate.name,
+            candidate.role,
+            candidate.skills,
+            candidate.missingSkills,
+            candidate.previousCompanies,
+            candidate.experienceYears
+          );
+          setInterviewGuide(guideData);
+        } catch (error) {
+          console.error("Failed to load interview guide:", error);
+        } finally {
+          setLoadingInterview(false);
+        }
+      }
+    };
+
+    loadOverviewContent();
+    loadInterviewContent();
+  }, [
+    activeSection,
+    candidate,
+    overview,
+    interviewGuide,
+    loadingOverview,
+    loadingInterview,
+  ]);
+
+  const getScoreBreakdown = () => {
+    // Use AI-generated breakdown if available, otherwise use fallback
+    if (overview?.scoreBreakdown) {
+      return [
+        {
+          label: "Technical Skills Match",
+          value: overview.scoreBreakdown.technicalSkills,
+          weight: "40%",
+          color: "#3f5ecc",
+        },
+        {
+          label: "Experience Relevance",
+          value: overview.scoreBreakdown.experienceRelevance,
+          weight: "30%",
+          color: "#3f5ecc",
+        },
+        {
+          label: "Education & Pedigree",
+          value: overview.scoreBreakdown.educationPedigree,
+          weight: "15%",
+          color: "#E9C7DB",
+        },
+        {
+          label: "Culture & Soft Skills",
+          value: overview.scoreBreakdown.cultureSoftSkills,
+          weight: "15%",
+          color: "#E9C7DB",
+        },
+      ];
+    }
+
+    // Fallback calculation
+    const score = candidate.score;
     const technical = Math.min(100, Math.max(0, score + 3));
     const experience = Math.min(100, Math.max(0, score - 4));
     const education = Math.min(100, Math.max(0, score + 6));
@@ -77,7 +203,7 @@ const CandidateDetail: React.FC<CandidateDetailProps> = ({
     ];
   };
 
-  const scoreBreakdown = getScoreBreakdown(candidate.score);
+  const scoreBreakdown = getScoreBreakdown();
 
   const renderContent = () => {
     switch (activeSection) {
@@ -89,20 +215,40 @@ const CandidateDetail: React.FC<CandidateDetailProps> = ({
               <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <BrainCircuit className="w-5 h-5 text-[#3f5ecc]" /> AI Executive
                 Summary
+                {loadingOverview && (
+                  <Loader2 className="w-4 h-4 text-[#3f5ecc] animate-spin ml-2" />
+                )}
               </h3>
               <div className="bg-[#f5f7ff] p-4 rounded-lg border border-[#BDDEF3] mb-4">
-                <p className="text-slate-700 text-sm leading-relaxed">
-                  <span className="font-semibold text-[#3f5ecc]">
-                    Recommendation: Strong Hire.
-                  </span>{" "}
-                  {candidate.name} demonstrates exceptional alignment with the
-                  Senior Backend role. Their verification data confirms strong
-                  expertise in Python/Django (
-                  {candidate.webVerification.github?.notableProject}), directly
-                  matching our tech stack. Previous tenure at{" "}
-                  {candidate.previousCompanies[0]?.name} suggests readiness for
-                  our current scaling challenges.
-                </p>
+                {loadingOverview ? (
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">
+                      Generating AI analysis with Gemini...
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-slate-700 text-sm leading-relaxed">
+                    <span className="font-semibold text-[#3f5ecc]">
+                      Recommendation:{" "}
+                      {overview?.recommendation || "Strong Hire"}.
+                    </span>{" "}
+                    {overview?.summary ||
+                      `${
+                        candidate.name
+                      } demonstrates exceptional alignment with the ${
+                        candidate.role
+                      } role. Their verification data confirms strong expertise in ${candidate.skills
+                        .slice(0, 2)
+                        .join(", ")} (${
+                        candidate.webVerification.github?.notableProject ||
+                        "notable projects"
+                      }), directly matching our tech stack. Previous tenure at ${
+                        candidate.previousCompanies[0]?.name ||
+                        "previous companies"
+                      } suggests readiness for our current scaling challenges.`}
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -110,50 +256,121 @@ const CandidateDetail: React.FC<CandidateDetailProps> = ({
                   <h4 className="text-xs font-bold text-green-700 uppercase mb-2 flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" /> Key Strengths
                   </h4>
-                  <ul className="space-y-1">
-                    {candidate.skills.slice(0, 3).map((skill) => (
-                      <li
-                        key={skill}
-                        className="text-sm text-slate-700 flex items-center gap-2"
-                      >
-                        <span className="w-1 h-1 bg-green-500 rounded-full"></span>{" "}
-                        {skill} Expert
-                      </li>
-                    ))}
-                    <li className="text-sm text-slate-700 flex items-center gap-2">
-                      <span className="w-1 h-1 bg-green-500 rounded-full"></span>{" "}
-                      {candidate.previousCompanies[0]?.context}
-                    </li>
-                  </ul>
+                  {loadingOverview ? (
+                    <div className="flex items-center gap-2 text-slate-400 text-sm">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Analyzing...
+                    </div>
+                  ) : (
+                    <ul className="space-y-1">
+                      {(
+                        overview?.keyStrengths ||
+                        candidate.skills.slice(0, 3).map((s) => `${s} Expert`)
+                      ).map((strength, idx) => (
+                        <li
+                          key={idx}
+                          className="text-sm text-slate-700 flex items-center gap-2"
+                        >
+                          <span className="w-1 h-1 bg-green-500 rounded-full"></span>{" "}
+                          {strength}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div className="border border-amber-100 bg-amber-50/50 rounded-lg p-3">
                   <h4 className="text-xs font-bold text-amber-700 uppercase mb-2 flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3" /> Areas to Probe
                   </h4>
-                  <ul className="space-y-1">
-                    {candidate.missingSkills.map((skill) => (
-                      <li
-                        key={skill}
-                        className="text-sm text-slate-700 flex items-center gap-2"
-                      >
-                        <span className="w-1 h-1 bg-amber-500 rounded-full"></span>{" "}
-                        Limited {skill} evidence
-                      </li>
-                    ))}
-                    <li className="text-sm text-slate-700 flex items-center gap-2">
-                      <span className="w-1 h-1 bg-amber-500 rounded-full"></span>{" "}
-                      Salary expectations (High)
-                    </li>
-                  </ul>
+                  {loadingOverview ? (
+                    <div className="flex items-center gap-2 text-slate-400 text-sm">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Analyzing...
+                    </div>
+                  ) : (
+                    <ul className="space-y-1">
+                      {(
+                        overview?.areasToProbe || [
+                          ...candidate.missingSkills.map(
+                            (s) => `Limited ${s} evidence`
+                          ),
+                          "Salary expectations (High)",
+                        ]
+                      ).map((area, idx) => (
+                        <li
+                          key={idx}
+                          className="text-sm text-slate-700 flex items-center gap-2"
+                        >
+                          <span className="w-1 h-1 bg-amber-500 rounded-full"></span>{" "}
+                          {area}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Score Calculation Analysis - NEW SECTION */}
+            {/* Score Calculation Analysis */}
             <div className="bg-white rounded-xl border border-[#BDDEF3] shadow-sm p-6">
               <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
                 <Calculator className="w-5 h-5 text-[#3f5ecc]" /> Score Analysis
+                {loadingAnalysis && (
+                  <Loader2 className="w-4 h-4 text-[#3f5ecc] animate-spin ml-2" />
+                )}
               </h3>
+
+              {/* AI Score Analysis Section */}
+              {scoreAnalysis && (
+                <div className="mb-6 p-4 bg-[#f5f7ff] rounded-lg border border-[#BDDEF3]">
+                  <h4 className="text-sm font-semibold text-[#3f5ecc] mb-2 flex items-center gap-2">
+                    <BrainCircuit className="w-4 h-4" /> AI-Powered Analysis
+                  </h4>
+                  <p className="text-sm text-slate-700 mb-3">
+                    {scoreAnalysis.overallAssessment}
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="font-medium text-slate-600">
+                        Technical:
+                      </span>
+                      <span className="text-slate-700 ml-1">
+                        {scoreAnalysis.technicalAnalysis}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-medium text-slate-600">
+                        Experience:
+                      </span>
+                      <span className="text-slate-700 ml-1">
+                        {scoreAnalysis.experienceAnalysis}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <span className="font-medium text-slate-600 text-sm">
+                      Growth Potential:
+                    </span>
+                    <span className="text-slate-700 text-sm ml-1">
+                      {scoreAnalysis.growthPotential}
+                    </span>
+                  </div>
+                  {scoreAnalysis.riskFactors &&
+                    scoreAnalysis.riskFactors.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-[#BDDEF3]">
+                        <span className="font-medium text-amber-600 text-sm flex items-center gap-1 mb-1">
+                          <AlertTriangle className="w-3 h-3" /> Risk Factors:
+                        </span>
+                        <ul className="text-sm text-slate-600 list-disc list-inside">
+                          {scoreAnalysis.riskFactors.map((risk, idx) => (
+                            <li key={idx}>{risk}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
                 {/* Donut Chart */}
                 <div className="flex flex-col items-center justify-center p-4 bg-[#f5f7ff] rounded-xl border border-[#BDDEF3] relative overflow-hidden">
@@ -370,46 +587,120 @@ const CandidateDetail: React.FC<CandidateDetailProps> = ({
           <div className="space-y-6">
             <div className="bg-white rounded-xl border border-[#BDDEF3] shadow-sm p-6">
               <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-[#3f5ecc]" /> Recommended
-                Interview Questions
+                <MessageSquare className="w-5 h-5 text-[#3f5ecc]" />{" "}
+                AI-Generated Interview Questions
+                {loadingInterview && (
+                  <Loader2 className="w-4 h-4 text-[#3f5ecc] animate-spin ml-2" />
+                )}
               </h3>
+
+              {/* Interview Tips */}
+              {interviewGuide?.interviewTips &&
+                interviewGuide.interviewTips.length > 0 && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                    <h4 className="text-xs font-bold text-blue-700 uppercase mb-2 flex items-center gap-1">
+                      <BrainCircuit className="w-3 h-3" /> AI Interview Tips
+                    </h4>
+                    <ul className="space-y-1">
+                      {interviewGuide.interviewTips.map((tip, idx) => (
+                        <li
+                          key={idx}
+                          className="text-sm text-blue-800 flex items-center gap-2"
+                        >
+                          <span className="w-1 h-1 bg-blue-500 rounded-full"></span>
+                          {tip}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
               <div className="space-y-4">
-                <div className="p-4 bg-[#f5f7ff] rounded-lg border border-[#BDDEF3]">
-                  <p className="text-sm font-medium text-[#3f5ecc] mb-1">
-                    Topic: System Design
-                  </p>
-                  <p className="text-slate-800 font-medium">
-                    "Can you describe a time you had to optimize a slow database
-                    query in {candidate.skills[0] || "Python"}? What was your
-                    approach?"
-                  </p>
-                  <p className="text-xs text-slate-500 mt-2">
-                    Looks for: Indexing knowledge, ORM understanding,
-                    performance analysis tools.
-                  </p>
-                </div>
-                <div className="p-4 bg-[#f5f7ff] rounded-lg border border-[#BDDEF3]">
-                  <p className="text-sm font-medium text-[#3f5ecc] mb-1">
-                    Topic: Experience at{" "}
-                    {candidate.previousCompanies[0]?.name || "Previous Role"}
-                  </p>
-                  <p className="text-slate-800 font-medium">
-                    "You mentioned working on{" "}
-                    {candidate.previousCompanies[0]?.context ||
-                      "complex projects"}
-                    . What was the biggest technical bottleneck you faced during
-                    that growth phase?"
-                  </p>
-                </div>
-                <div className="p-4 bg-[#f5f7ff] rounded-lg border border-[#BDDEF3]">
-                  <p className="text-sm font-medium text-[#3f5ecc] mb-1">
-                    Topic: Culture Fit
-                  </p>
-                  <p className="text-slate-800 font-medium">
-                    "Describe a situation where you disagreed with a product
-                    decision. How did you handle it?"
-                  </p>
-                </div>
+                {loadingInterview ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-slate-500">
+                    <Loader2 className="w-8 h-8 animate-spin mb-3 text-[#3f5ecc]" />
+                    <span className="text-sm">
+                      Generating personalized interview questions with Gemini
+                      AI...
+                    </span>
+                    <span className="text-xs text-slate-400 mt-1">
+                      Analyzing candidate profile and skills
+                    </span>
+                  </div>
+                ) : interviewGuide?.questions &&
+                  interviewGuide.questions.length > 0 ? (
+                  interviewGuide.questions.map((q, idx) => (
+                    <div
+                      key={idx}
+                      className="p-4 bg-[#f5f7ff] rounded-lg border border-[#BDDEF3]"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-sm font-medium text-[#3f5ecc]">
+                          Topic: {q.topic}
+                        </p>
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded ${
+                            q.difficulty === "Hard"
+                              ? "bg-red-100 text-red-600"
+                              : q.difficulty === "Medium"
+                              ? "bg-amber-100 text-amber-600"
+                              : "bg-green-100 text-green-600"
+                          }`}
+                        >
+                          {q.difficulty}
+                        </span>
+                      </div>
+                      <p className="text-slate-800 font-medium">
+                        "{q.question}"
+                      </p>
+                      <p className="text-xs text-slate-500 mt-2">
+                        <span className="font-medium">Looking for:</span>{" "}
+                        {q.lookingFor}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  // Fallback static questions
+                  <>
+                    <div className="p-4 bg-[#f5f7ff] rounded-lg border border-[#BDDEF3]">
+                      <p className="text-sm font-medium text-[#3f5ecc] mb-1">
+                        Topic: System Design
+                      </p>
+                      <p className="text-slate-800 font-medium">
+                        "Can you describe a time you had to optimize a slow
+                        database query in {candidate.skills[0] || "Python"}?
+                        What was your approach?"
+                      </p>
+                      <p className="text-xs text-slate-500 mt-2">
+                        Looks for: Indexing knowledge, ORM understanding,
+                        performance analysis tools.
+                      </p>
+                    </div>
+                    <div className="p-4 bg-[#f5f7ff] rounded-lg border border-[#BDDEF3]">
+                      <p className="text-sm font-medium text-[#3f5ecc] mb-1">
+                        Topic: Experience at{" "}
+                        {candidate.previousCompanies[0]?.name ||
+                          "Previous Role"}
+                      </p>
+                      <p className="text-slate-800 font-medium">
+                        "You mentioned working on{" "}
+                        {candidate.previousCompanies[0]?.context ||
+                          "complex projects"}
+                        . What was the biggest technical bottleneck you faced
+                        during that growth phase?"
+                      </p>
+                    </div>
+                    <div className="p-4 bg-[#f5f7ff] rounded-lg border border-[#BDDEF3]">
+                      <p className="text-sm font-medium text-[#3f5ecc] mb-1">
+                        Topic: Culture Fit
+                      </p>
+                      <p className="text-slate-800 font-medium">
+                        "Describe a situation where you disagreed with a product
+                        decision. How did you handle it?"
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -419,12 +710,14 @@ const CandidateDetail: React.FC<CandidateDetailProps> = ({
                 Template
               </h3>
               <div className="space-y-3">
-                {[
-                  "Technical Proficiency",
-                  "System Design",
-                  "Communication",
-                  "Culture Fit",
-                ].map((criteria) => (
+                {(
+                  interviewGuide?.scorecardCriteria || [
+                    "Technical Proficiency",
+                    "System Design",
+                    "Communication",
+                    "Culture Fit",
+                  ]
+                ).map((criteria) => (
                   <div
                     key={criteria}
                     className="flex items-center justify-between p-3 border border-slate-100 rounded-lg"
