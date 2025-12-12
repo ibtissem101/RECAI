@@ -14,7 +14,6 @@ import SplashCursor from "./SplashCursor";
 import logo from "./images/logo.png";
 import hero from "./images/hero.svg";
 
-
 const BluePolygonSection: React.FC = () => {
   return (
     <section
@@ -37,10 +36,13 @@ const BluePolygonSection: React.FC = () => {
             <div className="bg-[#3F5ECC] text-white p-3 rounded-lg mr-4">
               <FaChartBar />
             </div>
-            <h3 className="text-xl font-bold text-gray-900">AI Scoring System</h3>
+            <h3 className="text-xl font-bold text-gray-900">
+              AI Scoring System
+            </h3>
           </div>
           <p className="text-gray-700 text-sm">
-            Evaluates candidates on a 0–100 scale with transparent, explainable reasoning.
+            Evaluates candidates on a 0–100 scale with transparent, explainable
+            reasoning.
           </p>
         </div>
 
@@ -53,7 +55,8 @@ const BluePolygonSection: React.FC = () => {
             <h3 className="text-xl font-bold text-gray-900">Resume Parser</h3>
           </div>
           <p className="text-gray-700 text-sm">
-            Extracts skills, education and keywords and transforms resumes into structured JSON.
+            Extracts skills, education and keywords and transforms resumes into
+            structured JSON.
           </p>
         </div>
 
@@ -63,10 +66,13 @@ const BluePolygonSection: React.FC = () => {
             <div className="bg-purple-50 text-[#3F5ECC] p-3 rounded-lg mr-4">
               <FaComments />
             </div>
-            <h3 className="text-xl font-bold text-gray-900">Communication Drafts</h3>
+            <h3 className="text-xl font-bold text-gray-900">
+              Communication Drafts
+            </h3>
           </div>
           <p className="text-gray-700 text-sm">
-            Generates personalized outreach for updates, invites, and rejections.
+            Generates personalized outreach for updates, invites, and
+            rejections.
           </p>
         </div>
       </div>
@@ -140,14 +146,17 @@ const ContactRightPanel: React.FC = () => {
 /* ----------------------------------------------------------
    MAIN PAGE
 ----------------------------------------------------------- */
+interface WelcomePageProps {
+  onGetStarted?: () => void;
+}
+
 const WelcomePage: React.FC<WelcomePageProps> = ({ onGetStarted }) => {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800">
-
       {/* Header */}
       <header className="bg-white shadow-md py-4 px-8 fixed top-0 left-0 w-full z-50">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
-        <img src={logo} alt="RecAi Logo" className="h-14" />        
+          <img src={logo} alt="RecAi Logo" className="h-14" />
           <nav className="hidden md:flex items-center space-x-6 text-[#3F5ECC] font-semibold">
             <a href="#home">Home</a>
             <a href="#services">Services</a>
@@ -173,7 +182,10 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onGetStarted }) => {
       <div className="h-24" />
 
       {/* Hero */}
-      <section id="home" className="flex items-center justify-between px-8 py-15 ml-20">
+      <section
+        id="home"
+        className="flex items-center justify-between px-8 py-15 ml-20"
+      >
         <div className="flex-1 max-w-2xl">
           <h1 className="text-5xl font-bold text-[#3F5ECC] mb-6">
             AI-Powered Recruitment Automation
@@ -196,8 +208,7 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onGetStarted }) => {
             src={hero}
             className="w-full max-w-sm"
             alt="AI powered recruitment"
-            />
-
+          />
         </div>
       </section>
 
@@ -250,11 +261,10 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onGetStarted }) => {
           </div>
 
           {/* Right interactive panel */}
-            <ContactRightPanel />
-            <SplashCursor />
+          <ContactRightPanel />
+          <SplashCursor />
 
           {/* Right interactive panel */}
-
         </section>
       </main>
 

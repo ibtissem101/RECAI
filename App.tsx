@@ -38,6 +38,9 @@ import UploadModal from "./components/UploadModal";
 import HRReviewDashboard from "./components/HRReviewDashboard";
 import JobPostingPage from "./components/JobPostingPage";
 import CandidateChatBot from "./components/CandidateChatBot";
+import WelcomePage from "./components/WelcomePage";
+import LoginPage from "./components/LoginPage";
+import SignUpPage from "./components/SignUpPage";
 import { Candidate, DashboardStats, RankedCandidatesResult } from "./types";
 import { processAndRankResumes } from "./services/groqService";
 
@@ -308,7 +311,7 @@ const AppContent: React.FC = () => {
     if (result && result.allRanked.length > 0) {
       setSelectedCandidate(result.allRanked[0] as Candidate);
       // Navigate to candidates list to show all ranked candidates
-      navigate("/candidates");
+      navigate("/dashboard/candidates");
       setShowNotification(true);
       setTimeout(() => setShowNotification(false), 5000);
     }
@@ -317,12 +320,12 @@ const AppContent: React.FC = () => {
 
   const handleSelectCandidate = (candidate: Candidate) => {
     setSelectedCandidate(candidate);
-    navigate(`/candidates/${candidate.id}`);
+    navigate(`/dashboard/candidates/${candidate.id}`);
   };
 
   const handleReviewCandidate = (candidate: Candidate) => {
     setSelectedCandidate(candidate);
-    navigate(`/candidates/${candidate.id}/review`);
+    navigate(`/dashboard/candidates/${candidate.id}/review`);
   };
 
   const handleUpdateCandidate = (updated: Candidate) => {
@@ -353,17 +356,17 @@ const AppContent: React.FC = () => {
 
   const handleNavigate = (view: string) => {
     const routeMap: Record<string, string> = {
-      dashboard: "/",
-      candidates: "/candidates",
+      dashboard: "/dashboard",
+      candidates: "/dashboard/candidates",
 
-      settings: "/settings",
-      profile: "/profile",
+      settings: "/dashboard/settings",
+      profile: "/dashboard/profile",
     };
-    navigate(routeMap[view] || "/");
+    navigate(routeMap[view] || "/dashboard");
   };
 
   const isActive = (path: string) => {
-    if (path === "/") return location.pathname === "/";
+    if (path === "/dashboard") return location.pathname === "/dashboard";
     return location.pathname.startsWith(path);
   };
 
@@ -387,31 +390,34 @@ const AppContent: React.FC = () => {
           <NavItem
             icon={<LayoutDashboard size={20} />}
             label="Dashboard"
-            active={isActive("/")}
-            to="/"
+            active={isActive("/dashboard")}
+            to="/dashboard"
           />
           <NavItem
             icon={<Users size={20} />}
             label="Candidates"
-            active={isActive("/candidates")}
-            to="/candidates"
+            active={isActive("/dashboard/candidates")}
+            to="/dashboard/candidates"
           />
           <NavItem
             icon={<Briefcase size={20} />}
             label="Job Postings"
-            active={isActive("/job-postings")}
-            to="/job-postings"
+            active={isActive("/dashboard/job-postings")}
+            to="/dashboard/job-postings"
           />
           <NavItem
             icon={<Settings size={20} />}
             label="Settings"
-            active={isActive("/settings")}
-            to="/settings"
+            active={isActive("/dashboard/settings")}
+            to="/dashboard/settings"
           />
         </nav>
 
         <div className="p-4 border-t border-[#eef2ff]">
-          <button className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors">
+          <button
+            onClick={() => navigate("/")}
+            className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+          >
             <LogOut size={20} />
             Log Out
           </button>
@@ -442,29 +448,29 @@ const AppContent: React.FC = () => {
           <NavItem
             icon={<LayoutDashboard size={20} />}
             label="Dashboard"
-            active={isActive("/")}
-            to="/"
+            active={isActive("/dashboard")}
+            to="/dashboard"
             onClick={() => setSidebarOpen(false)}
           />
           <NavItem
             icon={<Users size={20} />}
             label="Candidates"
-            active={isActive("/candidates")}
-            to="/candidates"
+            active={isActive("/dashboard/candidates")}
+            to="/dashboard/candidates"
             onClick={() => setSidebarOpen(false)}
           />
           <NavItem
             icon={<Briefcase size={20} />}
             label="Job Postings"
-            active={isActive("/job-postings")}
-            to="/job-postings"
+            active={isActive("/dashboard/job-postings")}
+            to="/dashboard/job-postings"
             onClick={() => setSidebarOpen(false)}
           />
           <NavItem
             icon={<Settings size={20} />}
             label="Settings"
-            active={isActive("/settings")}
-            to="/settings"
+            active={isActive("/dashboard/settings")}
+            to="/dashboard/settings"
             onClick={() => setSidebarOpen(false)}
           />
         </nav>
@@ -651,7 +657,7 @@ const AppContent: React.FC = () => {
               element={
                 <CandidateDetail
                   candidate={selectedCandidate}
-                  onBack={() => navigate("/candidates")}
+                  onBack={() => navigate("/dashboard/candidates")}
                 />
               }
             />
@@ -661,7 +667,9 @@ const AppContent: React.FC = () => {
                 <HRReviewDashboard
                   candidate={selectedCandidate}
                   onUpdateCandidate={handleUpdateCandidate}
-                  onBack={() => navigate(`/candidates/${selectedCandidate.id}`)}
+                  onBack={() =>
+                    navigate(`/dashboard/candidates/${selectedCandidate.id}`)
+                  }
                 />
               }
             />
@@ -815,7 +823,7 @@ const AppContent: React.FC = () => {
                     onClick={() => {
                       setShowJobSelectionModal(false);
                       setJobSearchQuery("");
-                      navigate("/job-postings");
+                      navigate("/dashboard/job-postings");
                     }}
                     className="text-sm text-[#3f5ecc] font-medium hover:underline flex items-center gap-1"
                   >
@@ -892,7 +900,15 @@ const NavItem = ({
 const App: React.FC = () => {
   return (
     <Router>
-      <AppContent />
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/" element={<WelcomePage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignUpPage />} />
+
+        {/* Dashboard Routes (with sidebar layout) */}
+        <Route path="/dashboard/*" element={<AppContent />} />
+      </Routes>
     </Router>
   );
 };
