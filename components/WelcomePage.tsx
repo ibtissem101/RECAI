@@ -11,7 +11,7 @@ import {
   FaMapMarkerAlt,
 } from "react-icons/fa";
 import SplashCursor from "./SplashCursor";
-import logo from "./images/logo.png";
+import logo from "./images/Logo.png";
 import hero from "./images/hero.svg";
 
 const BluePolygonSection: React.FC = () => {

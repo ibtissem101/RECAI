@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { FaUser, FaEnvelope, FaLock, FaHome } from "react-icons/fa";
 import { Link, useNavigate } from "react-router-dom";
-import logo from "./images/logo.png";
+import logo from "./images/Logo.png";
 
 const SignUpPage: React.FC = () => {
   const [name, setName] = useState("");
