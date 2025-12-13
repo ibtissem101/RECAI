@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FaEnvelope, FaLock, FaHome } from "react-icons/fa";
-import logo from "./images/logo.png";
+import logo from "./images/Logo.png";
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -18,7 +18,7 @@ const LoginPage: React.FC = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#D7E9F4] relative">
-      {/* Home Link - Positioned slightly lower from the top */}
+      {/* Home Link */}
       <Link
         to="/"
         className="absolute top-8 left-4 text-[#3F5ECC] font-semibold text-lg flex items-center gap-2"

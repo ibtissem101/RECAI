@@ -1,6 +1,5 @@
 // Groq API Configuration
 const GROQ_API_KEY = (import.meta as any).env.VITE_GROQ_API_KEY || "";
-// services/groqService.ts
 const GROQ_API_URL =
   process.env.GROQ_API_URL || "https://api.groq.com/openai/v1/chat/completions";
 // Helper function to call Groq API
