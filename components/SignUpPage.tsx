@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { FaUser, FaEnvelope, FaLock, FaHome } from "react-icons/fa";
 import { Link, useNavigate } from "react-router-dom";
 import logo from "./images/logo.png";
+import api from "../api/api.ts";
 
 const SignUpPage: React.FC = () => {
   const [name, setName] = useState("");
@@ -9,13 +10,24 @@ const SignUpPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Handle sign-up logic here
-    console.log({ name, email, password });
-    // Navigate to dashboard after sign up
-    navigate("/dashboard");
-  };
+ const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  try {
+    await api.post("/auth/signup", {
+      name,
+      email,
+      password,
+    });
+
+    // After successful signup → go to login
+    navigate("/login");
+ } catch (err: any) {
+  alert(err.response?.data?.message || err.response?.data?.error || "Signup failed");
+}
+
+};
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#D7E9F4] relative">

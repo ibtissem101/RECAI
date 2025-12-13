@@ -8,11 +8,11 @@ const LoginPage: React.FC = () => {
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Bypass the backend API call temporarily
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle the login process (e.g., authenticate user)
-    console.log("Login Submitted", { email, password });
-    // Navigate to dashboard after login
+
+    // Directly navigate to the dashboard for now (bypassing authentication)
     navigate("/dashboard");
   };
 
