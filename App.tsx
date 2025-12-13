@@ -43,6 +43,7 @@ import LoginPage from "./components/LoginPage";
 import SignUpPage from "./components/SignUpPage";
 import { Candidate, DashboardStats, RankedCandidatesResult } from "./types";
 import { processAndRankResumes } from "./services/groqService";
+import logo from "./components/images/Logo.png";
 
 // Mock Data
 const mockStats: DashboardStats = {
@@ -375,15 +376,7 @@ const AppContent: React.FC = () => {
       {/* Sidebar - Desktop */}
       <aside className="w-64 bg-white border-r border-[#BDDEF3] hidden md:flex flex-col shadow-sm z-20">
         <div className="p-6 flex items-center gap-3">
-          <img src="/assets/logo.webp" alt="RECAI" className="h-5 " />
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-black">
-              RECAI
-            </h1>
-            <p className="text-slate-400 text-sm font-medium">
-              TalentFlow Engine
-            </p>
-          </div>
+          <img src={logo} alt="RecAi Logo" className="h-12" />
         </div>
 
         <nav className="flex-1 px-4 space-y-2 mt-4">

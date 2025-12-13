@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Search,
   Filter,
@@ -217,11 +217,18 @@ const CandidateList: React.FC<CandidateListProps> = ({
 }) => {
   const [filterStatus, setFilterStatus] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState("");
-  const [candidates] = useState<Candidate[]>(
+  const [candidates, setCandidates] = useState<Candidate[]>(
     propCandidates && propCandidates.length > 0
       ? propCandidates
       : generateCandidates()
   );
+
+  // Update candidates when props change
+  useEffect(() => {
+    if (propCandidates && propCandidates.length > 0) {
+      setCandidates(propCandidates);
+    }
+  }, [propCandidates]);
 
   const filteredCandidates = useMemo(() => {
     return candidates.filter((c) => {
